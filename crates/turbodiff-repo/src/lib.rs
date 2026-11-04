@@ -9,6 +9,7 @@ mod compare;
 mod content;
 mod error;
 mod filediff;
+mod ignore;
 mod linediff;
 mod refs;
 mod renames;

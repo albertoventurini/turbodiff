@@ -10,6 +10,8 @@ use crate::{Error, Result};
 pub struct Repo {
     inner: gix::ThreadSafeRepository,
     root: PathBuf,
+    git_dir: PathBuf,
+    common_dir: PathBuf,
     pub(crate) cache: Mutex<ContentCache>,
 }
 
@@ -54,10 +56,14 @@ impl Repo {
             return Err(Error::NotARepository(path.to_owned()));
         };
         let root = gix::path::realpath(root).map_err(Error::internal)?;
+        let git_dir = gix::path::realpath(repo.git_dir()).map_err(Error::internal)?;
+        let common_dir = gix::path::realpath(repo.common_dir()).map_err(Error::internal)?;
         strip_filter_drivers(&mut repo)?;
         Ok(Self {
             inner: repo.into_sync(),
             root,
+            git_dir,
+            common_dir,
             cache: Mutex::new(ContentCache::new(CACHE_BYTES)),
         })
     }
@@ -69,6 +75,18 @@ impl Repo {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// The repository's own `.git` folder, which holds `HEAD` and the index.
+    /// In a linked worktree it's under the main repository's `.git/worktrees`.
+    pub fn git_dir(&self) -> &Path {
+        &self.git_dir
+    }
+
+    /// The folder that holds `refs/` and `packed-refs`. The same as
+    /// [`Repo::git_dir`], except in a linked worktree.
+    pub fn common_dir(&self) -> &Path {
+        &self.common_dir
     }
 
     pub fn info(&self) -> Result<RepoInfo> {

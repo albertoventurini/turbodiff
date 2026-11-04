@@ -78,6 +78,30 @@ impl Changes {
     pub fn entries(&self) -> impl Iterator<Item = &FileEntry> {
         self.files.iter().map(|file| &file.entry)
     }
+
+    /// The paths whose diff may differ from `old`'s: files that were added to
+    /// or left the list, and files with a different entry or content on
+    /// either side. Sorted, like [`Changes::files`].
+    pub fn paths_changed_since(&self, old: &Changes) -> Vec<String> {
+        fn by_path(changes: &Changes) -> BTreeMap<&str, &ChangedFile> {
+            changes
+                .files
+                .iter()
+                .map(|file| (file.entry.path.as_str(), file))
+                .collect()
+        }
+        let (new, old) = (by_path(self), by_path(old));
+        let same = |a: &ChangedFile, b: &ChangedFile| {
+            a.entry == b.entry && a.old == b.old && a.new == b.new
+        };
+        let mut paths: BTreeSet<&str> = new
+            .iter()
+            .filter(|(path, file)| !old.get(*path).is_some_and(|before| same(file, before)))
+            .map(|(path, _)| *path)
+            .collect();
+        paths.extend(old.keys().filter(|path| !new.contains_key(*path)));
+        paths.into_iter().map(String::from).collect()
+    }
 }
 
 /// A path that differs, before rename detection.

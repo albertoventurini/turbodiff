@@ -447,3 +447,27 @@ fn a_cancelled_listing_stops_with_cancelled() {
         assert!(matches!(err, turbodiff_repo::Error::Cancelled));
     }
 }
+
+#[test]
+fn paths_changed_since_lists_edited_added_and_removed_files() {
+    let fixture = Fixture::build("worktree");
+    let repo = Repo::open(&fixture.path).unwrap();
+    let comparison = Comparison::default();
+    let before = repo.changes(&comparison, Algorithm::Histogram).unwrap();
+    assert!(
+        repo.changes(&comparison, Algorithm::Histogram)
+            .unwrap()
+            .paths_changed_since(&before)
+            .is_empty()
+    );
+
+    std::fs::write(fixture.path.join("modified.txt"), "edited\n").unwrap();
+    std::fs::write(fixture.path.join("added.txt"), "new\n").unwrap();
+    std::fs::remove_file(fixture.path.join("untracked.txt")).unwrap();
+    std::fs::write(fixture.path.join("build/more.txt"), "ignored\n").unwrap();
+    let after = repo.changes(&comparison, Algorithm::Histogram).unwrap();
+    assert_eq!(
+        after.paths_changed_since(&before),
+        ["added.txt", "modified.txt", "untracked.txt"]
+    );
+}
