@@ -43,16 +43,19 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - run: pnpm lint
       - name: cargo fmt
-        working-directory: src-tauri
-        run: cargo fmt --check
+        run: cargo fmt --all --check
+      # clippy only warns, even with -D warnings, when a clippy.toml path no
+      # longer resolves (for example after a gix upgrade), so check for that too.
       - name: cargo clippy
-        working-directory: src-tauri
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: |
+          cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
+          if grep -q "does not refer to a reachable function" clippy.log; then
+            echo "::error::clippy.toml names a path that no longer resolves"
+            exit 1
+          fi
 
   test:
     name: Test (${{ matrix.os }})
@@ -79,10 +82,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - run: pnpm test
       - name: cargo test
-        working-directory: src-tauri
-        run: cargo test --locked
+        run: cargo test --locked --workspace

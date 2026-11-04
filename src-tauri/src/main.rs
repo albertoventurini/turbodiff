@@ -1,5 +1,4 @@
 mod commands;
-mod repo;
 
 fn main() {
     let builder = commands::specta_builder();

@@ -4713,13 +4713,24 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "turbodiff"
 version = "0.1.0"
 dependencies = [
- "gix",
  "serde",
  "specta",
  "specta-typescript",
  "tauri",
  "tauri-build",
  "tauri-specta",
+ "turbodiff-repo",
+]
+
+[[package]]
+name = "turbodiff-repo"
+version = "0.1.0"
+dependencies = [
+ "gix",
+ "serde",
+ "specta",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

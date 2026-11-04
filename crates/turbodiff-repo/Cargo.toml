@@ -1,0 +1,23 @@
+[package]
+name = "turbodiff-repo"
+version = "0.1.0"
+description = "Read-only repository access for TurboDiff"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+specta.workspace = true
+thiserror = "2.0.21"
+# Default features are off so that write-capable modules (checkout, merge, notes,
+# credentials) aren't compiled in. See TECH.md §8.
+gix = { version = "0.90.0", default-features = false, features = [
+    "sha1",
+    "max-performance",
+    "revision",
+    "status",
+] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

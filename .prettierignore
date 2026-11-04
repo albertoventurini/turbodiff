@@ -1,5 +1,7 @@
 dist/
+target/
 src-tauri/
+crates/
 pnpm-lock.yaml
 src/lib/types.ts
 # Hand-written docs keep their own formatting.

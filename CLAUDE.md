@@ -36,15 +36,17 @@ pnpm tauri dev        # run the app (debug builds also regenerate src/lib/types.
 pnpm test             # Vitest
 pnpm lint             # ESLint + Prettier check + svelte-check
 pnpm format           # apply Prettier
-cd src-tauri && cargo test     # also fails, and regenerates src/lib/types.ts, if it's stale
-cd src-tauri && cargo clippy --all-targets -- -D warnings
-cd src-tauri && cargo fmt --check
+cargo test --workspace        # also fails, and regenerates src/lib/types.ts, if it's stale
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
 ```
+
+Cargo commands run from the repository root, which holds the workspace `Cargo.toml`. If clippy prints "does not refer to a reachable function", a `clippy.toml` path is stale. That's only a warning, so check for it (CI fails on it).
 
 ## Architecture rules
 
-- **Read-only, always.** Only `src-tauri/src/repo/` may use `gix`. Never call gitoxide APIs that write, lock or refresh the index on disk. `clippy.toml` `disallowed-methods` enforces this, so don't silence it.
-- **`repo/` has no Tauri dependency.** It's a plain Rust library, tested with `cargo test`. Tauri-specific code belongs in `commands.rs`, `watch/` and `app/`.
+- **Read-only, always.** Only the `turbodiff-repo` crate (`crates/turbodiff-repo/`) may use `gix`. Never call gitoxide APIs that write, lock or refresh the index on disk. `clippy.toml` `disallowed-methods` enforces this, so don't silence it.
+- **`turbodiff-repo` has no Tauri dependency.** It's a plain Rust library, tested with `cargo test`. Tauri-specific code belongs in `src-tauri` (`commands.rs`, `watch/` and `app/`), which uses `turbodiff-repo` and doesn't depend on `gix` itself.
 - **Rust computes, Svelte renders.** Diffing, hunks, word-level ranges and line counts are done in Rust. The frontend never diffs text.
 - **The TypeScript types for the IPC API are generated** by `tauri-specta` into `src/lib/types.ts`. Don't edit that file by hand. Change the Rust types and regenerate (run `cargo test`, then commit the file).
 - **Every new command needs a permission.** Add it to the app manifest in `src-tauri/build.rs` and its `allow-*` permission to `src-tauri/capabilities/default.json`. Don't grant core or plugin permissions the webview doesn't need.
@@ -54,7 +56,7 @@ cd src-tauri && cargo fmt --check
 
 ## Testing
 
-- Every Rust change in `repo/` comes with unit tests or fixture tests. Fixture repositories are built by scripts in `tests/fixtures/`. They need `git`, but only to run the tests.
+- Every Rust change in `turbodiff-repo` comes with unit tests or fixture tests. Fixture repositories are built by scripts in `tests/fixtures/`. They need `git`, but only to run the tests.
 - Tests that compare with `git diff` check paths, statuses, renames and `+/−` counts. They do not compare hunk boundaries (TECH.md §1).
 - Svelte components get Vitest + Testing Library tests, with `api.ts` mocked.
 - Run lint and all tests before calling a task done.

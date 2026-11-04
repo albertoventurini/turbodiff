@@ -2,26 +2,18 @@
 name = "turbodiff"
 version = "0.1.0"
 description = "A read-only desktop viewer for git diffs"
-edition = "2024"
-rust-version = "1.88"
-publish = false
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [build-dependencies]
 tauri-build = { version = "2.7.4", features = [] }
 
 [dependencies]
 tauri = { version = "2.12.5", features = [] }
-serde = { version = "1.0.229", features = ["derive"] }
-specta = "=2.0.0-rc.26"
+serde.workspace = true
+specta.workspace = true
 # tauri-specta's Tauri 2 support has only been released as release candidates.
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 specta-typescript = "=0.0.13"
-# Default features are off so that write-capable modules (checkout, merge, notes,
-# credentials) aren't compiled in. See TECH.md §8.
-gix = { version = "0.90.0", default-features = false, features = [
-    "sha1",
-    "max-performance",
-    "revision",
-    "status",
-] }
-
+turbodiff-repo = { path = "../crates/turbodiff-repo" }

@@ -7,7 +7,7 @@ import ts from 'typescript-eslint';
 import svelteConfig from './svelte.config.js';
 
 export default defineConfig(
-  { ignores: ['dist/', 'src-tauri/', 'src/lib/types.ts'] },
+  { ignores: ['dist/', 'target/', 'src-tauri/', 'crates/', 'src/lib/types.ts'] },
   js.configs.recommended,
   ts.configs.recommended,
   svelte.configs.recommended,

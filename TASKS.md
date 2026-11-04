@@ -21,7 +21,7 @@ Tick a task (`[x]`) when its code, tests and any document updates are done.
 
 ## M1 — Repository core (Rust, no UI)
 
-Everything here lives in `src-tauri/src/repo/` and is tested with `cargo test`.
+Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) and is tested with `cargo test`.
 
 - [ ] Fixture scripts in `tests/fixtures/` covering every case listed in TECH §10.1.
 - [ ] Open a repository with `gix::discover`. Return a typed `NotARepository` error when there isn't one (TECH §4.1).

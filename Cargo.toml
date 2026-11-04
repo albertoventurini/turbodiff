@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["src-tauri", "crates/turbodiff-repo"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }

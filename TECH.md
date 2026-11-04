@@ -82,6 +82,12 @@ turbodiff/
 │   │   ├── highlight/      # Shiki worker + client
 │   │   └── theme/          # Primer token mapping, mode switching
 │   └── styles/
+├── Cargo.toml              # Cargo workspace: src-tauri, crates/turbodiff-repo
+├── clippy.toml             # disallowed gix write APIs, for the whole workspace (§8)
+├── crates/
+│   └── turbodiff-repo/     # gitoxide + imara-diff logic (no Tauri types)
+│       ├── src/
+│       └── tests/          # fixture tests (§10.1)
 ├── src-tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -89,14 +95,13 @@ turbodiff/
 │   └── src/
 │       ├── main.rs
 │       ├── commands.rs     # #[tauri::command] surface
-│       ├── repo/           # gitoxide + imara-diff logic (no Tauri types)
 │       ├── watch/
 │       └── app/            # windows, CLI, settings, recent repos
 ├── tests/fixtures/         # scripts that build fixture repositories
 └── .github/workflows/
 ```
 
-`repo/` does not depend on Tauri, so it can be tested as an ordinary Rust library.
+Repository access is a separate library crate, `turbodiff-repo`, in a Cargo workspace whose root is the repository root. It does not depend on Tauri, so it can be tested as an ordinary Rust library, and its tests build without building Tauri. `src-tauri` uses it through a path dependency and doesn't depend on `gix` itself, so Cargo enforces both rules. The shared target directory is `target/` at the root.
 
 ---
 
@@ -208,6 +213,7 @@ All commands are `async` and return `Result<T, AppError>`. `AppError` is a tagge
 
 **Shared types** (Rust structs that are serialised to JSON) get TypeScript definitions generated with **`specta`/`tauri-specta`**, so `src/lib/types.ts` never falls out of sync with the Rust code.
 
+- The data types returned by `turbodiff-repo` derive `serde::Serialize` and `specta::Type` (`specta` isn't a Tauri crate), so commands can return them directly. `serde` and `specta` versions are shared through `[workspace.dependencies]`.
 - Tauri 2 support in `tauri-specta` has only been released as release candidates, so `specta`, `tauri-specta` and `specta-typescript` are pinned to exact versions (`=`) in `Cargo.toml`, as the crate recommends.
 - Debug builds rewrite `types.ts` on startup. A `cargo test` test compares the committed file with freshly generated output. If they differ, it rewrites the file and fails, so CI catches a stale `types.ts`.
 
@@ -274,9 +280,9 @@ These are Svelte rune stores, one set per window:
 
 The PRD requires that TurboDiff never modifies the repository (PRD §8, §10). This is guaranteed by how the code is built:
 
-- Only `src-tauri/src/repo/` imports `gix`.
+- Only the `turbodiff-repo` crate imports `gix`. `src-tauri` has no `gix` dependency.
 - `gix` is built with **default features off**, enabling only what reading needs (`revision`, `status` and what they pull in). Write-capable modules such as checkout (`worktree-mutation`), `merge`, `notes` and `credentials` aren't compiled in.
-- `src-tauri/clippy.toml` uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, which also fails on a configured path that no longer resolves.
+- `clippy.toml`, at the workspace root so it applies to every crate, uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, so calling one fails the build. A configured path that no longer resolves only makes clippy print a warning ("does not refer to a reachable function"), which `-D warnings` doesn't turn into an error, so CI also fails when that text appears in clippy's output.
 - Status is computed **without refreshing the index on disk.** File timestamp information stays in memory and is never written back.
 - Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5. Our commands are declared in the app manifest (`build.rs`), so each one needs its `allow-*` permission in `capabilities/default.json`, and no core or plugin permissions are granted beyond what the frontend actually uses. The CSP allows only the app's own resources.
 
@@ -301,14 +307,15 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 ### 10.1 Rust: unit and fixture tests (`cargo test`)
 
 - **Unit tests:** hunk building and merging, context handling, whitespace normalisation, word-level tokenising and pairing, binary detection, UTF-16 offset conversion, missing final newline.
-- **Fixture repositories:** shell scripts in `tests/fixtures/` create small repositories with `git` (needed only to *run the tests*, not in the app). Cases covered:
+- **Fixture repositories:** shell scripts in `tests/fixtures/` create small repositories with `git` (needed only to *run the tests*, not in the app). Each test builds its fixture in a temporary directory. The scripts share `lib.sh`, which fixes author and committer names, emails and dates (one hour apart per commit) and ignores the user's git config, so results are reproducible. They use only portable `sed` and `awk`, so they run on macOS too. Cases covered:
   - staged, unstaged and untracked changes, and ignored files,
   - a repository with no commits yet,
   - renames, with and without content changes, and near the similarity threshold,
   - binary files, mode changes, submodule updates, deleted files,
   - line-ending conversion via `.gitattributes`,
   - three-dot vs two-dot where base has moved on (the `billing.py` example in the PRD),
-  - unrelated histories (no merge base).
+  - unrelated histories (no merge base),
+  - branches (local and remote-tracking), lightweight and annotated tags, and a long history for paging and searching commits.
 - **Comparison with git:** for each fixture and comparison, TurboDiff's file list is checked against `git diff --name-status -M` and `git diff --numstat --diff-algorithm=histogram`. Paths, statuses, rename pairs and `+/−` counts must match. Hunk boundaries are not compared, as accepted in §1. Known borderline rename cases are marked as allowed differences.
 
 ### 10.2 Frontend: component tests (Vitest + `@testing-library/svelte`)
@@ -332,7 +339,7 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 - **`ci.yml`** runs on every push and PR, on `ubuntu-latest` and `macos-latest`:
   - Node 26, with pnpm set up from `packageManager` in `package.json`,
   - `pnpm install --frozen-lockfile`, `pnpm lint` (ESLint, Prettier check, `svelte-check`), `pnpm test`,
-  - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`,
+  - `cargo fmt --check`, `cargo clippy -D warnings` (plus the stale-path check in §8), `cargo test`, for the whole Cargo workspace from the repository root,
   - Linux system packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
 - **`release.yml`** runs when a `v*` tag is pushed and uses `tauri-action` to build:
   - Linux: **AppImage** and **.deb**,
