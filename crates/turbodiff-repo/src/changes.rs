@@ -61,9 +61,7 @@ pub struct Totals {
 #[derive(Debug, Clone)]
 pub struct ChangedFile {
     pub entry: FileEntry,
-    #[expect(dead_code, reason = "read by get_file_diff, added next")]
     pub(crate) old: Option<Version>,
-    #[expect(dead_code, reason = "read by get_file_diff, added next")]
     pub(crate) new: Option<Version>,
 }
 

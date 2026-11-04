@@ -2,10 +2,12 @@
 //!
 //! This is the only crate that may use `gix`, and it must not depend on Tauri.
 
+mod cache;
 mod changes;
 mod compare;
 mod content;
 mod error;
+mod filediff;
 mod linediff;
 mod refs;
 mod renames;
@@ -14,6 +16,10 @@ mod repo;
 pub use changes::{ChangedFile, Changes, FileEntry, Status, Totals};
 pub use compare::{CompareSide, Comparison, Mode, Resolved};
 pub use error::{Error, Result};
+pub use filediff::{
+    DiffOptions, FileDiff, Hunk, LARGE_DIFF_LINES, LARGE_FILE_BYTES, Line, LineKind,
+    NoNewlineAtEof, Side,
+};
 pub use linediff::Algorithm;
 pub use refs::{CommitItem, RefItem, RefKind, SEARCH_COMMITS_SCAN_LIMIT};
 pub use repo::{HeadInfo, Repo, RepoInfo};

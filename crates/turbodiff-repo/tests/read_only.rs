@@ -9,7 +9,7 @@ use std::path::Path;
 use std::time::SystemTime;
 
 use common::Fixture;
-use turbodiff_repo::{Algorithm, Comparison, Repo};
+use turbodiff_repo::{Algorithm, Comparison, DiffOptions, Repo, Side};
 
 /// Every file under `dir` with its modification time and a hash of its content.
 fn snapshot(dir: &Path) -> BTreeMap<String, (SystemTime, u64)> {
@@ -61,7 +61,17 @@ fn reading_a_repository_changes_nothing_on_disk() {
                 ignore_whitespace,
                 ..Comparison::default()
             };
-            repo.changes(&comparison, Algorithm::Histogram).unwrap();
+            let changes = repo.changes(&comparison, Algorithm::Histogram).unwrap();
+            let options = DiffOptions {
+                ignore_whitespace,
+                force: true,
+                ..DiffOptions::default()
+            };
+            for file in &changes.files {
+                repo.file_diff(file, &options).unwrap();
+                repo.lines(file, Side::Old, 1, 10).unwrap();
+                repo.lines(file, Side::New, 1, 10).unwrap();
+            }
         }
 
         assert_eq!(before, snapshot(fixture.path.parent().unwrap()), "{name}");

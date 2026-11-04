@@ -43,15 +43,15 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
   - apply `.gitattributes` filters,
   - detect renames (TECH §4.4).
 - [x] `+/−` counts for every file, using the active algorithm and whitespace setting.
-- [ ] Single-file diff:
+- [x] Single-file diff:
   - binary and large-file checks,
   - UTF-8 decoding,
   - missing final newline,
   - Histogram or Myers,
   - hunks with configurable context (TECH §4.5).
-- [ ] Hide whitespace: lines are compared with whitespace removed, the original text is kept for display, and whitespace-only files are reported.
-- [ ] Word-level ranges: pair deleted and inserted lines, tokenise, diff the tokens, skip pairs that are too different, return UTF-16 offsets.
-- [ ] `get_lines` for expanding context, backed by an LRU cache of file contents.
+- [x] Hide whitespace: lines are compared with whitespace removed, the original text is kept for display, and whitespace-only files are reported.
+- [x] Word-level ranges: pair deleted and inserted lines, tokenise, diff the tokens, skip pairs that are too different, return UTF-16 offsets.
+- [x] `get_lines` for expanding context, backed by an LRU cache of file contents.
 - [x] Comparison tests against `git diff --name-status -M` and `--numstat --diff-algorithm=histogram` for every fixture (TECH §10.1).
 
 ## M2 — IPC and app services

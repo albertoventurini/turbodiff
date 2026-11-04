@@ -168,19 +168,19 @@ Similarity is git's estimate: content is cut into spans at each newline or every
 
 ### 4.5 Diffing one file
 
-`get_file_diff(path, opts)` returns a `FileDiff`. Steps:
+`get_file_diff(path, opts)` returns a `FileDiff`. In `turbodiff-repo` this is `Repo::file_diff(file, options)`, where `file` is a `ChangedFile` from the cached list (it holds both versions) and `DiffOptions` has `algorithm`, `ignore_whitespace`, `context` and `force`. Steps:
 
 1. **Load both sides:** the tree blob and/or the filtered work-tree content.
 2. **Binary check**, following git's rule (a NUL byte in the first 8,000 bytes) or a `-diff`/`binary` attribute in `.gitattributes`. Binary files return `Binary { old_size, new_size }`.
-3. **Large-file check:** if the file is over 500 KB or has more than 1,000 changed lines (provisional thresholds, PRD open question 1) and `force` isn't set, return `TooLarge { additions, deletions }`.
+3. **Large-file check:** if the file is over 500 KB or has more than 1,000 changed lines and `force` isn't set, return `TooLarge { additions, deletions }`. The thresholds are the provisional constants `LARGE_FILE_BYTES` and `LARGE_DIFF_LINES` (PRD open question 1). The size check comes before diffing, using the counts from the file list.
 4. **Decode** as UTF-8. Content that is not valid UTF-8 is treated as binary (PRD §8).
 5. **Split into lines,** recording any missing final newline on either side.
 6. **Prepare for hide whitespace:** when it's on, lines are compared using a key with all whitespace removed (as `git diff -w` does), while the original text is kept for display.
 7. **Diff** with `imara-diff` (`Histogram` or `Myers`) to get a list of changed line ranges.
-8. **Build hunks** with `context` lines (from Settings), merging hunks whose context overlaps, as git does.
-9. **Word-level ranges:** inside each changed block, delete lines are paired with insert lines in order, the first deletion with the first insertion and so on. Each pair is split into tokens (words, runs of whitespace, punctuation) and diffed with `imara-diff`. The changed character ranges are returned as `[start, end)` UTF-16 offsets, ready to use in JavaScript. Pairs that are too different (less than about 30% in common) get no word-level ranges, as on GitHub.
+8. **Build hunks** with `context` lines (from Settings), merging hunks whose context would touch or overlap (at most 2 × `context` unchanged lines between changes), as git does. As in git's headers, a side with no lines starts at the line before the change (`@@ -0,0 +1,3 @@`). `Line.text` has no `\n`. With hide whitespace on, unchanged lines show the new text. If nothing is left of the diff but the text differs, the result is `WhitespaceOnly`.
+9. **Word-level ranges:** inside each changed block, delete lines are paired with insert lines in order, the first deletion with the first insertion and so on. Each pair is split into tokens (words, runs of whitespace, punctuation) and diffed with `imara-diff`. The changed character ranges are returned as `[start, end)` UTF-16 offsets, ready to use in JavaScript. Pairs that are too different (less than 30% of their bytes in common) get no word-level ranges, as on GitHub. Words are runs of letters, digits and `_`. Every other non-space character is its own token. With hide whitespace on, whitespace tokens compare equal and are never marked.
 
-**Expand context:** the response includes `old_line_count` and `new_line_count`. The frontend requests hidden lines with `get_lines(path, side, start, end)`. The backend keeps the most recently loaded file contents in an LRU cache, so expanding doesn't re-read files.
+**Expand context:** the response includes `old_line_count` and `new_line_count`. The frontend requests hidden lines with `get_lines(path, side, start, end)`, where `start` and `end` are 1-based and inclusive, clamped to the file. The backend keeps the most recently loaded file contents in an LRU cache of up to 64 MB (`CACHE_BYTES`), keyed by object id, so expanding doesn't re-read files. A work-tree file's id is the hash of its filtered content, so an edited file never hits a stale entry. Content that changed on disk after the list was built isn't cached under the old id.
 
 ### 4.6 Watching for changes
 

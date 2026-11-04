@@ -1,13 +1,16 @@
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::Serialize;
 
+use crate::cache::{CACHE_BYTES, ContentCache};
 use crate::{Error, Result};
 
 /// An open repository. It is only ever read (TECH.md §8).
 pub struct Repo {
     inner: gix::ThreadSafeRepository,
     root: PathBuf,
+    pub(crate) cache: Mutex<ContentCache>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -55,6 +58,7 @@ impl Repo {
         Ok(Self {
             inner: repo.into_sync(),
             root,
+            cache: Mutex::new(ContentCache::new(CACHE_BYTES)),
         })
     }
 

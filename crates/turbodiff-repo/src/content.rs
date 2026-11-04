@@ -59,6 +59,10 @@ impl<'repo> Loader<'repo> {
         })
     }
 
+    pub fn object_hash(&self) -> gix::hash::Kind {
+        self.repo.object_hash()
+    }
+
     pub fn index(&self) -> &gix::index::State {
         &self.index
     }
