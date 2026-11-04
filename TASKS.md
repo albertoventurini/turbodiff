@@ -113,10 +113,10 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M7 — Live refresh
 
-- [ ] File watcher with `notify` and a debouncer, filtered against `.gitignore`, watching `.git` refs and the index (TECH §4.6).
-- [ ] Emit `repo-changed`. When the compare side is a commit, refresh only on changes in `.git`.
-- [ ] Frontend: apply a refresh while keeping scroll position, selection, collapsed files and expanded context (PRD §6.9).
-- [ ] `comparison-invalid`: fall back to work tree vs `HEAD` and show a notice.
+- [x] File watcher with `notify` and a debouncer, filtered against `.gitignore`, watching `.git` refs and the index (TECH §4.6).
+- [x] Emit `repo-changed`. When the compare side is a commit, refresh only on changes in `.git`.
+- [x] Frontend: apply a refresh while keeping scroll position, selection, collapsed files and expanded context (PRD §6.9).
+- [x] `comparison-invalid`: fall back to work tree vs `HEAD` and show a notice.
 
 ## M8 — Settings window
 

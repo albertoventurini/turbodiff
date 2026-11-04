@@ -23,7 +23,7 @@ This document explains *how* TurboDiff is built. It covers the stack, the archit
 | Diff computation | **In Rust.** The frontend only renders | Fast. Keeps the UI simple. |
 | Syntax highlighting | **Shiki** in a **Web Worker** | Official GitHub Light and Dark themes and VS Code grammars, without blocking the UI. |
 | Colours | **`@primer/primitives`** (GitHub Primer tokens) as CSS custom properties | Matches GitHub exactly. |
-| File watching | **`notify`** + **`notify-debouncer-full`** | Works across platforms, with debouncing built in. |
+| File watching | **`notify`**, with our own debounce | Works across platforms. `notify-debouncer-full` was the first plan, but it debounces each path separately, so a burst like a checkout would arrive as several batches (§4.6). |
 | Tests | Rust unit and fixture tests; **Vitest** + Testing Library for Svelte | See §10. |
 | CI / release | **GitHub Actions** + **`tauri-action`** | Lint and tests on Linux and macOS; release builds when a version tag is pushed. |
 | macOS signing | **Deferred** | Unsigned builds until there's an Apple Developer account. |
@@ -46,8 +46,8 @@ This document explains *how* TurboDiff is built. It covers the stack, the archit
 │  │         changes,       │ repo-changed  │  Toolbar, RefPicker,     │ │
 │  │         filediff       │               │  FileTree, DiffList,     │ │
 │  ├────────────────────────┤               │  FileDiff, Settings      │ │
-│  │ watch/  notify +       │               ├──────────────────────────┤ │
-│  │         debouncer      │               │ highlight.worker.ts      │ │
+│  │ watch/  notify,        │               ├──────────────────────────┤ │
+│  │         debounce       │               │ highlight.worker.ts      │ │
 │  ├────────────────────────┤               │  (Shiki)                 │ │
 │  │ app/    windows, CLI,  │               └──────────────────────────┘ │
 │  │         settings,      │                                            │
@@ -99,7 +99,7 @@ turbodiff/
 │       ├── events.rs       # events sent to the webview
 │       ├── session.rs      # per-window session, generation, cancellation
 │       ├── error.rs        # AppError
-│       ├── watch/
+│       ├── watch/          # file watcher (no Tauri types)
 │       └── app/            # windows, CLI, settings, recent repos, menus
 ├── tests/fixtures/         # scripts that build fixture repositories
 └── .github/workflows/
@@ -188,20 +188,24 @@ Similarity is git's estimate: content is cut into spans at each newline or every
 
 ### 4.6 Watching for changes
 
-- **One watcher per window session,** on the work-tree root (recursive) and on `.git` (only `HEAD`, `index`, `refs/`, `packed-refs`).
-- Events are **filtered** against `.gitignore` before debouncing, so build folders don't trigger refreshes.
-- **Debounce** at about 300 ms (PRD §6.9). After the delay, the backend:
-  - re-resolves the comparison,
-  - rebuilds the file list,
-  - increases a `generation` counter,
-  - emits `repo-changed { generation, files_changed: [...] }`.
-- When compare is a commit (not the work tree), only changes in `.git` trigger a refresh.
-- If a ref can no longer be resolved, the backend emits `comparison-invalid` and the frontend falls back to work tree vs `HEAD` (PRD §6.9).
+- **One watcher per window session** (`src-tauri/src/watch/`, plain Rust with no Tauri types). It lives in the window's `WindowSlot`, starts when a session is placed there, and stops when the slot is replaced or the window closes. It's started on the blocking pool, since listing the folders to watch can take a while.
+- **What's watched:**
+  - the git dir, non-recursively, for `HEAD` and `index`;
+  - the common dir's `packed-refs` and `refs/` (recursively). The git dir and common dir differ in a linked worktree (`Repo::git_dir`, `Repo::common_dir`).
+  - **The work tree.** On Linux, inotify needs a watch per folder, so only folders git doesn't ignore are watched, one by one (`Repo::unignored_dirs`), and folders created later get a watch when their creation is seen. `target/`, `node_modules/` and other ignored folders are never watched. On macOS, one recursive FSEvents watch on the root covers the work tree and a `.git` inside it.
+- **Filtering:** events go through a pure function, `classify`, which sorts them into a `Trigger { git, work_tree }`.
+  - Reads (`Access` events, ours included) are dropped.
+  - In `.git`, only `HEAD`, `index`, `packed-refs` and `refs/**` count; `*.lock`, `objects/`, `logs/` and the like don't.
+  - Work-tree paths that git ignores are dropped (`Repo::ignored`, which reads `.gitignore` files, `info/exclude` and `core.excludesFile` again on every batch, and never ignores a tracked file).
+- **Debounce:** our own trailing debounce. A change is reported once the repository has been quiet for 300 ms (PRD §6.9), or after 2 s of changes that never stop (`MAX_DELAY`). Filtering comes first, so ignored files never delay or cause a refresh.
+- **When compare is a commit** (not the work tree), only a `git` trigger refreshes (`should_refresh` in `app/refresh.rs`). A work-tree comparison refreshes on either, since a moved `HEAD` moves its base.
+- **A refresh** (`Session::begin_refresh`) starts a new generation for the same comparison and cancels the listing in progress. It keeps the cached `Changes` until the new list is done, so `get_file_diff` and `get_lines` keep working, tagged with the generation of the list they came from. The new list is compared with the old one (`Changes::paths_changed_since`: added, removed, or a different entry or content on either side), and the window gets `repo-changed { comparison, changes: ChangeSet, filesChanged, head }`. A newer refresh or `set_comparison` cancels one still running.
+- **A ref that no longer resolves** (`RefNotFound` while refreshing) sends `comparison-invalid { name }`. The frontend falls back to work tree vs `HEAD` and shows a notice naming the ref (PRD §6.9). Other refresh errors, such as a file read halfway through a write, are logged, and the next change tries again.
 
 ### 4.7 App services
 
 - **Windows and sessions** (`src-tauri/src/app/windows.rs`, `session.rs`): every repository window is created from Rust with the label `repo-N`, the lowest number free. Each one has a slot in `AppState`, holding its `Session` or nothing while it shows the welcome screen. Opening a folder (from `open_repo`, the menu, a drop or the command line) opens the repository on the blocking pool, then decides under one lock where it goes (`app/placement.rs`): the window that already shows that work-tree root is focused; otherwise the window the request came from is used if it's empty; otherwise a new window opens. A window that's already loaded gets `repo-opened`; a new window asks with `get_window_state` when its page loads. Errors from requests with no caller waiting (menu, drop, second launch) go to the window as `open-failed`. If the first launch's path isn't a repository, the welcome window opens and `get_window_state` returns the error once. Closing a window drops its session and cancels any listing in progress.
-- **Generation and cancellation:** a session's `generation` starts at 0 and goes up each time `set_comparison` is called (and, from M7, on each refresh). Starting a generation cancels the previous one's listing through a `turbodiff_repo::Cancel` flag, which `changes` checks between files, and a listing that finishes for an older generation is dropped (`Cancelled`) instead of replacing the cached `Changes`. `get_file_diff` and `get_lines` look files up in the cached list by path.
+- **Generation and cancellation:** a session's `generation` starts at 0 and goes up each time `set_comparison` is called, and on each refresh (§4.6). Starting a generation cancels the previous one's listing through a `turbodiff_repo::Cancel` flag, which `changes` checks between files, and a listing that finishes for an older generation is dropped (`Cancelled`) instead of replacing the cached `Changes`. `get_file_diff` and `get_lines` look files up in the cached list by path.
 - **CLI:** `turbodiff [PATH] [--base REF] [--compare REF]`, parsed with `clap` (`app/cli.rs`) rather than `tauri-plugin-cli`, because the same parser has to handle the arguments a second launch forwards, and it can be unit-tested. Without `PATH` the welcome screen is shown, and `--base`/`--compare` need a `PATH`. A relative `PATH` is resolved against the launch's working directory. `tauri-plugin-single-instance` sends the arguments of a second launch to the running process, which opens or focuses the right window (or focuses an empty window, or opens one, for a launch without `PATH`). Arguments are parsed before the plugin runs, so `--help`, `--version` and usage errors print in the terminal. The CLI accepts any revision expression and resolves it with gitoxide's `rev_parse`. When the repository is already open, a launch that names refs sends that window `repo-opened` with the new comparison.
 - **Settings:** JSON stored in `settings.json` in the platform config directory, which Tauri names after the app identifier `com.albertoventurini.turbodiff` (`~/.config/com.albertoventurini.turbodiff/` or `~/Library/Application Support/com.albertoventurini.turbodiff/`), through `tauri-plugin-store`, used only from Rust. Stored values are read field by field, so a missing or invalid value gets its default without resetting the others. `set_settings` takes a patch: numbers are clamped to their ranges (PRD §6.8) and a tab width other than 2, 4 or 8 is ignored. An empty `codeFont` means the platform's default monospace font. Changes are sent to all windows with a `settings-changed` event. Settings that change the file list (the diff algorithm) take effect when the frontend calls `set_comparison` again.
 - **Recent repositories:** in the same store, at most 10 work-tree roots, most recent first, deduplicated. Whether each one still exists is checked when the list is read (`available`). Changes are sent as `recent-changed` and rebuild the Open Recent menu.
@@ -231,7 +235,7 @@ All commands are `async`. Repository work runs on Tauri's blocking thread pool. 
 
 `Versioned<T>` is `{ generation, value: T }`. `RepoOpened` is `{ repo: RepoInfo, comparison: Comparison }`, where `RepoInfo` is `{ root, name, head: HeadInfo }`.
 
-**Events:** `settings-changed` (`Settings`, to every window), `recent-changed` (`RecentRepo[]`, to every window), `repo-opened` and `open-failed { error }` (to one window, §4.7), and from M7 `repo-changed` and `comparison-invalid`.
+**Events:** `settings-changed` (`Settings`, to every window), `recent-changed` (`RecentRepo[]`, to every window), `repo-opened` and `open-failed { error }` (to one window, §4.7), and `repo-changed { comparison, changes, filesChanged, head }` and `comparison-invalid { name }` (to one window, §4.6). `repo-changed` carries the whole `ChangeSet`, so the frontend needs no second request; a window that has asked for another comparison since ignores it.
 
 **Shared types** (Rust structs that are serialised to JSON) get TypeScript definitions generated with **`specta`/`tauri-specta`**, so `src/lib/types.ts` never falls out of sync with the Rust code.
 
@@ -278,10 +282,10 @@ Every response that depends on the repository includes the `generation` it was c
 
 These are Svelte rune stores, one set per window:
 
-- `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, and a notice for failures that leave the window as it was (`open-failed`). Hide whitespace lives here, as part of the `Comparison`.
+- `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, a notice for failures that leave the window as it was (`open-failed`), and `fallback`, the ref that disappeared after `comparison-invalid`. A `repo-changed` that arrives while a `set_comparison` is pending replaced that listing in the backend, so it counts as its result. Hide whitespace lives here, as part of the `Comparison`.
 - `view`: selected file, the file at the top of the all-files view (`current`, which the sidebar marks; M5's diff list sets it), tree or flat file list, diff style (inline or split), collapsed files and whether the sidebar is collapsed. The tree or flat choice isn't saved (PRD §6.11).
-- `diffs` (`DiffStore`, owned by `DiffList` rather than shared through context): each file's loaded diff and the unchanged lines revealed by expanding context, keyed by path. It's emptied when the `ChangeSet` or the context-lines or algorithm settings change, since every diff depends on them.
-- `highlights` (`HighlightStore`, also owned by `DiffList`): syntax highlighting tokens by path and Shiki theme (§7.4), emptied when the `ChangeSet` changes.
+- `diffs` (`DiffStore`, owned by `DiffList` rather than shared through context): each file's loaded diff and the unchanged lines revealed by expanding context, keyed by path. It's emptied when a new list replaces the old one (`session.listing`: a `set_comparison` result) or the context-lines or algorithm settings change, since every diff depends on them. A refresh (`session.refresh`, from `repo-changed`) only touches what changed (§7.3).
+- `highlights` (`HighlightStore`, also owned by `DiffList`): syntax highlighting tokens by path and Shiki theme (§7.4), emptied when `session.listing` changes.
 - `system` (`SystemMode`): whether the OS is in dark mode, shared through context so `DiffList` can pick the Shiki theme for the current mode.
 - `settings`: shared with every window through the `settings-changed` event.
 - `recent`: the recent repositories for the welcome screen, following `recent-changed`.
@@ -294,7 +298,7 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 
 `Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `SegmentedControl` · `Sidebar` (summary line, tree / flat toggle) · `FileTree` (tree or flat; compacted single-child folders) · `StatusBadge` · `DiffList` (virtual list, sticky header, horizontal scrolling) · `DiffRow` (one row of any kind, inline or split) · `FileHeader` · `Welcome` · `SettingsWindow` · `EmptyState`.
 
-**Sidebar** (PRD §6.5). The tree lists folders before files, each in path order (numbers in natural order, case ignored), as GitHub does; the flat list is in path order. `orderedFiles` in `src/lib/fileTree.ts` gives the same order, for the diff list to follow (PRD §6.6). A renamed file sits at its new path, with the old one in its tooltip. Clicking a file sets `view.selected`, and clicking it again or pressing `Esc` clears it. A selected file that leaves the list is deselected. Folders the user collapsed stay collapsed while the list refreshes. The tree isn't virtualised: it's one small row per file, unlike the diff list.
+**Sidebar** (PRD §6.5). The tree lists folders before files, each in path order (numbers in natural order, case ignored), as GitHub does; the flat list is in path order. `orderedFiles` in `src/lib/fileTree.ts` gives the same order, for the diff list to follow (PRD §6.6). A renamed file sits at its new path, with the old one in its tooltip. Clicking a file sets `view.selected`, and clicking it again or pressing `Esc` clears it. A selected file that leaves the list is deselected, and a collapsed one is forgotten. Folders the user collapsed stay collapsed while the list refreshes. The tree isn't virtualised: it's one small row per file, unlike the diff list.
 
 **Ref picker** (PRD §6.3). Each opening reloads the branch and tag lists, so they're never stale, and keeps the previous ones until the new ones arrive, which lets the picker open on the right tab at once. For a ref from the command line, which may be a short name or a revision such as `main~3`, the tab is found from the loaded lists: a tag wins over a branch of the same name, as in git, and anything else is a commit. The Commits tab loads 50 commits at a time, and the next page when the list is scrolled to within 200 px of its end. Typing searches the backend after a 150 ms pause: commit messages on the Commits tab, and, when the text looks like a SHA, `resolve_commit_prefix` on every tab, so a pasted SHA is offered under "Commits with this SHA" even on Branches or Tags. `Esc` closes the picker without also deselecting a file. The swap button is disabled while compare is the working tree, which can't be a base. The three-dot / two-dot toggle explains itself in a native tooltip.
 
@@ -313,6 +317,7 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 - **Diffs load on demand:** a file's diff is fetched when it comes within about two screen-heights of the viewport. Until then it's shown as a placeholder of the estimated height, based on its line counts.
 - **Keeping the place:** the list remembers the row at the top and the scroll position relative to it (and relative to its file's header, for a placeholder that gets replaced). Whenever row offsets change (a diff loads, wrapped rows are measured, context is expanded or a file collapses), the scroll position is set so that row stays where it was. Collapsing the file whose header is pinned brings that header to the top.
 - **Single-file focus** (PRD §6.6) gives the same component a row list for one file. The scroll position of the all-files view is saved and restored when you go back.
+- **Live refresh** (PRD §6.9): `DiffStore.refresh` forgets files that left the list and keeps unchanged files as they are, expanded context included. A changed file keeps showing its old diff, marked stale, so its rows keep their keys and the anchor holds. It loads again when it's near the viewport. Its new diff then reveals the same new-side line numbers that were expanded before, where they're still hidden unchanged lines (`hiddenRuns`). If lines moved, those numbers may now show different lines; that's accepted. A stale diff can't be expanded and isn't highlighted.
 - **Split view** is built from the same hunks: within each changed block, deletions go to the left column and additions to the right, aligned row by row, with blank filler cells on the shorter side.
 
 ### 7.4 Syntax highlighting
@@ -322,7 +327,7 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 - Shiki highlights **complete old and new file contents**, rather than isolated lines, so multi-line constructs like block comments and strings are right. The text comes from `get_lines(path, side, 1, lineCount)`, which the backend serves from its content cache: the old side only when the file has deletions, the new side whenever it has lines. Deleted lines take their tokens from the old side; added and unchanged lines from the new side (with hide whitespace on, unchanged lines show the new text). In split view, an unchanged line's left cell uses the right cell's line number for this.
 - The worker returns each line as `[end, style]` runs with a per-file table of inline styles (colour, italic, bold). Runs in the theme's default foreground get no style, so the diff's own Primer colours apply to them. `spans` in `diffRows.ts` combines the runs with the word-level ranges; highlighting that runs past the end of a line is dropped for that line. Syntax colours come from Shiki's GitHub themes as data and are applied as inline styles, so no colour literals appear in the source.
 - Highlighting is **skipped** for files with more than `LARGE_DIFF_LINES` changed lines, for a side longer than `LARGE_FILE_BYTES` (500,000 UTF-16 units, which also catches files shown with "Load diff"), and for unknown languages. Lines over 1,000 characters stay plain, and Shiki gives up on a line after 500 ms. If the worker can't start or fails, it's stopped and everything is plain text from then on; a file that fails to highlight on its own stays plain. Rows render plain text first and pick up colours when they arrive, without changing height, so highlighting never blocks the first view of a diff.
-- **Cache:** `HighlightStore` (`src/lib/stores/highlights.svelte.ts`, owned by `DiffList` beside `DiffStore`) keeps tokens by path and Shiki theme, and is cleared whenever the `ChangeSet` changes, which stands in for the generation. Switching between light and dark keeps both, so switching back is instant. Files are highlighted when their diff is loaded and they're within the load-ahead window (§7.3).
+- **Cache:** `HighlightStore` (`src/lib/stores/highlights.svelte.ts`, owned by `DiffList` beside `DiffStore`) keeps tokens by path and Shiki theme, and is cleared whenever a new list replaces the old one. A file whose diff changed in a refresh drops its tokens when the new diff arrives, and is highlighted again. Switching between light and dark keeps both, so switching back is instant. Files are highlighted when their diff is loaded and they're within the load-ahead window (§7.3).
 
 ---
 
@@ -415,4 +420,5 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 | Size of Shiki grammars | A curated list of about 50 common languages (§7.4), each a chunk loaded only when needed: about 3 MB before Tauri compresses the assets, C++ the largest at 0.8 MB. Other languages are plain text. |
 | Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Counts are compared with `git diff -w --numstat` on a fixture. |
 | Find in page (`Mod+F`, PRD §6.10) only finds rows the virtual list has rendered, because the rest of the diff isn't in the DOM | Known since M5. Options: a search of our own over the loaded diffs that scrolls to matches, or rendering more rows while the find bar is open. To be decided before release (M9). |
+| Tools that rewrite the index often (an editor running `git status` every few seconds) make TurboDiff list the changes again each time | Seen as an index change, so a refresh. Cheap for normal repositories, and an unchanged result changes nothing on screen. Revisit in the M9 performance pass if it shows up. |
 | Large-diff thresholds | PRD open question 1. Defined as constants. Checked in M5 on this repository (lock files and the generated `themes.css` start collapsed, hand-written files don't), with no reason found to change them; to be revisited in the M9 performance pass. |
