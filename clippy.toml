@@ -39,6 +39,7 @@ disallowed-methods = [
     { path = "gix::objs::Write::write_buf_with_known_id", reason = "writes an object; TurboDiff is read-only" },
     { path = "gix::objs::Write::write_stream", reason = "writes an object; TurboDiff is read-only" },
     { path = "gix::objs::Write::write_stream_with_known_id", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::filter::Pipeline::worktree_file_to_object", reason = "writes a blob for the work-tree file; TurboDiff is read-only" },
 
     # Config writes
     { path = "gix::Repository::config_file_mut", reason = "opens a config file for writing; TurboDiff is read-only" },

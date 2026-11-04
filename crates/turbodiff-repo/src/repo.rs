@@ -37,7 +37,7 @@ impl Repo {
         if !path.is_dir() {
             return Err(Error::NotARepository(path.to_owned()));
         }
-        let repo = gix::discover(path).map_err(|err| {
+        let mut repo = gix::discover(path).map_err(|err| {
             if err
                 .downcast_any_ref::<gix::discover::upwards::Error>()
                 .is_some()
@@ -51,6 +51,7 @@ impl Repo {
             return Err(Error::NotARepository(path.to_owned()));
         };
         let root = gix::path::realpath(root).map_err(Error::internal)?;
+        strip_filter_drivers(&mut repo)?;
         Ok(Self {
             inner: repo.into_sync(),
             root,
@@ -82,4 +83,21 @@ impl Repo {
             head: HeadInfo { branch, commit },
         })
     }
+}
+
+/// Removes `filter.<driver>` sections from the in-memory configuration, so no
+/// external clean or smudge command (such as Git LFS) ever runs. Those may
+/// write into `.git`. Built-in filters (line endings, `ident`) still apply.
+/// The configuration files on disk are untouched.
+fn strip_filter_drivers(repo: &mut gix::Repository) -> Result<()> {
+    let mut config = repo.config_snapshot_mut();
+    let ids: Vec<_> = config
+        .sections_and_ids_by_name("filter")
+        .map(|sections| sections.map(|(_, id)| id).collect())
+        .unwrap_or_default();
+    for id in ids {
+        config.remove_section_by_id(id);
+    }
+    config.commit()?;
+    Ok(())
 }
