@@ -8,16 +8,16 @@ Tick a task (`[x]`) when its code, tests and any document updates are done.
 
 ## M0 — Project setup
 
-- [ ] Set up the Tauri 2 + Svelte 5 + TypeScript project with Vite and pnpm, using the layout in TECH §3.
-- [ ] Set up linting and formatting:
+- [x] Set up the Tauri 2 + Svelte 5 + TypeScript project with Vite and pnpm, using the layout in TECH §3.
+- [x] Set up linting and formatting:
   - ESLint, Prettier and `svelte-check`, behind `pnpm lint`,
   - `rustfmt` and `clippy`.
-- [ ] Add `clippy.toml` with `disallowed-methods` that block gitoxide's write and lock APIs (TECH §8).
-- [ ] Set up Vitest and `@testing-library/svelte` (`pnpm test`).
-- [ ] Set up `tauri-specta` to generate `src/lib/types.ts`, with a sample command to prove it works.
-- [ ] Lock down Tauri capabilities so the webview can only call our own commands.
-- [ ] Add a CI workflow (`ci.yml`) that runs lint and tests on Ubuntu and macOS (TECH §11).
-- [ ] Fill in the Commands section of CLAUDE.md with the real commands.
+- [x] Add `clippy.toml` with `disallowed-methods` that block gitoxide's write and lock APIs (TECH §8).
+- [x] Set up Vitest and `@testing-library/svelte` (`pnpm test`).
+- [x] Set up `tauri-specta` to generate `src/lib/types.ts`, with a sample command to prove it works.
+- [x] Lock down Tauri capabilities so the webview can only call our own commands.
+- [x] Add a CI workflow (`ci.yml`) that runs lint and tests on Ubuntu and macOS (TECH §11).
+- [x] Fill in the Commands section of CLAUDE.md with the real commands.
 
 ## M1 — Repository core (Rust, no UI)
 

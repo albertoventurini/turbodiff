@@ -15,8 +15,8 @@ This document explains *how* TurboDiff is built. It covers the stack, the archit
 | Area | Choice | Why |
 |---|---|---|
 | App shell | **Tauri 2** | Small binaries, low memory use, Rust backend, web UI that makes the GitHub look easy to reproduce. |
-| Frontend | **Svelte 5** (runes) + **TypeScript** | Little boilerplate. Fine-grained reactivity suits a large, frequently refreshed diff list. |
-| Build tooling | **Vite** + **pnpm** | Standard Tauri and Svelte setup. |
+| Frontend | **Svelte 5** (runes) + **TypeScript 6.0** | Little boilerplate. Fine-grained reactivity suits a large, frequently refreshed diff list. TypeScript 7 isn't used yet because `typescript-eslint` and `svelte-check` don't support it. |
+| Build tooling | **Vite** + **pnpm**, on Node LTS (26) | Standard Tauri and Svelte setup. The pnpm version is pinned by `packageManager` in `package.json`. |
 | Git access | **gitoxide (`gix`)** | Pure Rust, no dependency on an installed `git`, structured data, direct access to file contents. |
 | Diff engine | **`imara-diff`** (what gitoxide uses), called directly | Histogram and Myers algorithms. Full control over hunks, context and whitespace handling. |
 | Default algorithm | **Histogram**, with Myers available in Settings | Usually produces more readable diffs. |
@@ -208,6 +208,9 @@ All commands are `async` and return `Result<T, AppError>`. `AppError` is a tagge
 
 **Shared types** (Rust structs that are serialised to JSON) get TypeScript definitions generated with **`specta`/`tauri-specta`**, so `src/lib/types.ts` never falls out of sync with the Rust code.
 
+- Tauri 2 support in `tauri-specta` has only been released as release candidates, so `specta`, `tauri-specta` and `specta-typescript` are pinned to exact versions (`=`) in `Cargo.toml`, as the crate recommends.
+- Debug builds rewrite `types.ts` on startup. A `cargo test` test compares the committed file with freshly generated output. If they differ, it rewrites the file and fails, so CI catches a stale `types.ts`.
+
 ```ts
 type FileEntry = {
   path: string; oldPath?: string; status: 'A'|'M'|'D'|'R'|'T';
@@ -272,9 +275,10 @@ These are Svelte rune stores, one set per window:
 The PRD requires that TurboDiff never modifies the repository (PRD §8, §10). This is guaranteed by how the code is built:
 
 - Only `src-tauri/src/repo/` imports `gix`.
-- `clippy.toml` uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. CI runs clippy with warnings treated as errors.
+- `gix` is built with **default features off**, enabling only what reading needs (`revision`, `status` and what they pull in). Write-capable modules such as checkout (`worktree-mutation`), `merge`, `notes` and `credentials` aren't compiled in.
+- `src-tauri/clippy.toml` uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, which also fails on a configured path that no longer resolves.
 - Status is computed **without refreshing the index on disk.** File timestamp information stays in memory and is never written back.
-- Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5.
+- Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5. Our commands are declared in the app manifest (`build.rs`), so each one needs its `allow-*` permission in `capabilities/default.json`, and no core or plugin permissions are granted beyond what the frontend actually uses. The CSP allows only the app's own resources.
 
 v1 has no automated before-and-after check of `.git`, by choice. Before each release, the PRD's read-only criterion is checked manually: run the app against a repository, then compare `git status`, the reflog and the checksum of `.git/index` before and after.
 
@@ -326,6 +330,7 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 **GitHub Actions**
 
 - **`ci.yml`** runs on every push and PR, on `ubuntu-latest` and `macos-latest`:
+  - Node 26, with pnpm set up from `packageManager` in `package.json`,
   - `pnpm install --frozen-lockfile`, `pnpm lint` (ESLint, Prettier check, `svelte-check`), `pnpm test`,
   - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`,
   - Linux system packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.

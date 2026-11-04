@@ -28,14 +28,15 @@ Tauri 2 · Rust · gitoxide (`gix`) + `imara-diff` · Svelte 5 (runes) + TypeScr
 
 ## Commands
 
-The project hasn't been set up yet. Update this section once it has.
+Needs Rust stable, Node 26 (LTS) and pnpm 12 (pinned by `packageManager` in `package.json`).
 
 ```bash
 pnpm install          # frontend deps
-pnpm tauri dev        # run the app
+pnpm tauri dev        # run the app (debug builds also regenerate src/lib/types.ts)
 pnpm test             # Vitest
 pnpm lint             # ESLint + Prettier check + svelte-check
-cd src-tauri && cargo test
+pnpm format           # apply Prettier
+cd src-tauri && cargo test     # also fails, and regenerates src/lib/types.ts, if it's stale
 cd src-tauri && cargo clippy --all-targets -- -D warnings
 cd src-tauri && cargo fmt --check
 ```
@@ -45,7 +46,8 @@ cd src-tauri && cargo fmt --check
 - **Read-only, always.** Only `src-tauri/src/repo/` may use `gix`. Never call gitoxide APIs that write, lock or refresh the index on disk. `clippy.toml` `disallowed-methods` enforces this, so don't silence it.
 - **`repo/` has no Tauri dependency.** It's a plain Rust library, tested with `cargo test`. Tauri-specific code belongs in `commands.rs`, `watch/` and `app/`.
 - **Rust computes, Svelte renders.** Diffing, hunks, word-level ranges and line counts are done in Rust. The frontend never diffs text.
-- **The TypeScript types for the IPC API are generated** by `tauri-specta` into `src/lib/types.ts`. Don't edit that file by hand. Change the Rust types and regenerate.
+- **The TypeScript types for the IPC API are generated** by `tauri-specta` into `src/lib/types.ts`. Don't edit that file by hand. Change the Rust types and regenerate (run `cargo test`, then commit the file).
+- **Every new command needs a permission.** Add it to the app manifest in `src-tauri/build.rs` and its `allow-*` permission to `src-tauri/capabilities/default.json`. Don't grant core or plugin permissions the webview doesn't need.
 - **Every response that depends on the repository carries a `generation`.** The frontend discards responses older than the latest one it has.
 - **Colours come only from Primer tokens** (CSS custom properties). Never put raw colour values in components.
 - **The diff list is virtualised by row.** Don't render whole files into the DOM.
