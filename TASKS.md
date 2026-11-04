@@ -23,8 +23,8 @@ Tick a task (`[x]`) when its code, tests and any document updates are done.
 
 Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) and is tested with `cargo test`.
 
-- [ ] Fixture scripts in `tests/fixtures/` covering every case listed in TECH §10.1.
-- [ ] Open a repository with `gix::discover`. Return a typed `NotARepository` error when there isn't one (TECH §4.1).
+- [x] Fixture scripts in `tests/fixtures/` covering every case listed in TECH §10.1.
+- [x] Open a repository with `gix::discover`. Return a typed `NotARepository` error when there isn't one (TECH §4.1).
 - [ ] List branches, with the current one marked, local before remote, sorted by most recent commit.
 - [ ] List tags, newest first.
 - [ ] Commits:
