@@ -1,6 +1,6 @@
 [package]
 name = "turbodiff-repo"
-version = "0.1.0"
+version.workspace = true
 description = "Read-only repository access for TurboDiff"
 edition.workspace = true
 rust-version.workspace = true

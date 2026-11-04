@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:tokens": "node scripts/build-tokens.js",
+    "set-version": "node scripts/set-version.js",
     "tauri": "tauri",
     "test": "vitest run",
     "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",

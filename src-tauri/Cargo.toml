@@ -1,6 +1,6 @@
 [package]
 name = "turbodiff"
-version = "0.1.0"
+version.workspace = true
 description = "A read-only desktop viewer for git diffs"
 edition.workspace = true
 rust-version.workspace = true
