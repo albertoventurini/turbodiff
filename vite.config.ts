@@ -15,6 +15,9 @@ export default defineConfig({
     watch: { ignored: ['**/src-tauri/**'] },
   },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
+  // The highlight worker loads each grammar as its own chunk, which needs ES
+  // module workers (TECH.md §7.4).
+  worker: { format: 'es' },
   build: {
     // WebKitGTK on Linux, WKWebView on macOS.
     target: 'safari15',
