@@ -9,12 +9,14 @@ import {
   type ChangeSet,
   type CommitItem,
   type Comparison,
+  type FileDiff,
   type OpenFailed,
   type RecentRepo,
   type RefItem,
   type RepoOpened,
   type Settings,
   type SettingsPatch,
+  type Side,
   type Versioned,
   type WindowState,
 } from './types';
@@ -75,6 +77,21 @@ export function resolveCommitPrefix(prefix: string): Promise<Versioned<CommitIte
 
 export function setComparison(comparison: Comparison): Promise<ChangeSet> {
   return unwrap(commands.setComparison(comparison));
+}
+
+/** The diff of one file from the current list. `force` shows a large file anyway ("Load diff"). */
+export function getFileDiff(path: string, force: boolean): Promise<Versioned<FileDiff>> {
+  return unwrap(commands.getFileDiff(path, force));
+}
+
+/** Lines `start..=end` (1-based, clamped to the file) of one side of a file. */
+export function getLines(
+  path: string,
+  side: Side,
+  start: number,
+  end: number,
+): Promise<Versioned<string[]>> {
+  return unwrap(commands.getLines(path, side, start, end));
 }
 
 export function getSettings(): Promise<Settings> {

@@ -5,11 +5,13 @@ import type {
   AppError,
   ChangeSet,
   CommitItem,
+  FileDiff,
   OpenFailed,
   RecentRepo,
   RefItem,
   RepoOpened,
   Settings,
+  Side,
   Versioned,
   WindowState,
 } from '../types';
@@ -88,6 +90,12 @@ export const resolveCommitPrefix = vi.fn<(prefix: string) => Promise<Versioned<C
   Promise.resolve(versioned([])),
 );
 export const setComparison = vi.fn(() => Promise.resolve(changeSet()));
+export const getFileDiff = vi.fn<(path: string, force: boolean) => Promise<Versioned<FileDiff>>>(
+  () => Promise.resolve(versioned<FileDiff>({ kind: 'whitespaceOnly' })),
+);
+export const getLines = vi.fn<
+  (path: string, side: Side, start: number, end: number) => Promise<Versioned<string[]>>
+>(() => Promise.resolve(versioned([])));
 export const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
 export const setSettings = vi.fn((patch: Partial<Settings>) =>
   Promise.resolve({ ...DEFAULT_SETTINGS, ...patch }),
