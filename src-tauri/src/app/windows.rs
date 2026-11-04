@@ -118,9 +118,10 @@ pub async fn open(
                     label.clone(),
                     WindowSlot {
                         session: Some(session.clone()),
-                        pending_error: None,
+                        ..Default::default()
                     },
                 );
+                super::refresh::start(app, label.clone(), session.clone());
                 Some(session)
             }
         };

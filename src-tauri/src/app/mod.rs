@@ -6,6 +6,7 @@ pub mod cli;
 pub mod menu;
 pub mod placement;
 pub mod recent;
+mod refresh;
 pub mod settings;
 mod store;
 pub mod windows;
@@ -20,6 +21,7 @@ use tauri_specta::Event;
 use crate::error::AppError;
 use crate::events::{RecentChanged, SettingsChanged};
 use crate::session::Session;
+use crate::watch::Watcher;
 use recent::{RecentList, RecentRepo};
 use settings::{Settings, SettingsPatch};
 
@@ -41,6 +43,9 @@ pub struct WindowSlot {
     /// An error to show when the window's page asks for its state, for a
     /// window opened after opening a folder failed.
     pub pending_error: Option<AppError>,
+    /// Watches the session's repository (TECH.md §4.6). Dropping it stops
+    /// watching.
+    pub watcher: Option<Watcher>,
 }
 
 impl AppState {

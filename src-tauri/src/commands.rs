@@ -15,7 +15,9 @@ use crate::app::recent::RecentRepo;
 use crate::app::settings::{Settings, SettingsPatch};
 use crate::app::{self, AppState, windows};
 use crate::error::{AppError, AppResult};
-use crate::events::{OpenFailed, RecentChanged, RepoOpened, SettingsChanged};
+use crate::events::{
+    ComparisonInvalid, OpenFailed, RecentChanged, RepoChanged, RepoOpened, SettingsChanged,
+};
 use crate::session::{ChangeSet, Session, Versioned};
 
 /// Where the generated TypeScript bindings live.
@@ -294,7 +296,9 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             SettingsChanged,
             RecentChanged,
             RepoOpened,
-            OpenFailed
+            OpenFailed,
+            RepoChanged,
+            ComparisonInvalid
         ])
         // One TypeScript type per Rust type, rather than `X_Serialize` and
         // `X_Deserialize` variants (TECH.md §5).

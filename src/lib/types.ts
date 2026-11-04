@@ -52,8 +52,10 @@ export const commands = {
 
 /** Events */
 export const events = {
+	comparisonInvalid: makeEvent<ComparisonInvalid, ComparisonInvalid>("comparison-invalid"),
 	openFailed: makeEvent<OpenFailed, OpenFailed>("open-failed"),
 	recentChanged: makeEvent<RecentChanged, RecentChanged>("recent-changed"),
+	repoChanged: makeEvent<RepoChanged, RepoChanged>("repo-changed"),
 	repoOpened: makeEvent<RepoOpened, RepoOpened>("repo-opened"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
 };
@@ -120,6 +122,16 @@ export type Comparison = {
 	mode: Mode,
 	/**  Hide whitespace (PRD §6.7). */
 	ignoreWhitespace: boolean,
+};
+
+/**
+ *  Sent to a window when a refresh found that a ref in its comparison no
+ *  longer resolves, such as a deleted branch. The window falls back to work
+ *  tree vs `HEAD` (PRD §6.9).
+ */
+export type ComparisonInvalid = {
+	/**  The ref that no longer resolves. */
+	name: string,
 };
 
 export type DiffStyle = "inline" | "split";
@@ -230,6 +242,18 @@ export type RefItem = {
 };
 
 export type RefKind = "localBranch" | "remoteBranch" | "tag";
+
+/**
+ *  Sent to a window after its repository changed on disk and the file list
+ *  was rebuilt (TECH.md §4.6). `files_changed` are the paths whose diffs may
+ *  differ from the previous list, including ones that left it.
+ */
+export type RepoChanged = {
+	changes: ChangeSet,
+	filesChanged: string[],
+	/**  `HEAD` now, which moves on a commit or a branch switch. */
+	head: HeadInfo,
+};
 
 export type RepoInfo = {
 	/**  The work-tree root. */

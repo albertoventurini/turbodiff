@@ -5,6 +5,7 @@ mod events;
 mod session;
 #[cfg(test)]
 mod test_support;
+mod watch;
 
 fn main() {
     // Parse first, so `--help`, `--version` and usage errors print and exit

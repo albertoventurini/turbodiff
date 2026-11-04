@@ -40,12 +40,13 @@ pub struct Session {
 
 struct State {
     comparison: Comparison,
-    /// Increased each time the comparison is set (and, later, refreshed).
+    /// Increased each time the comparison is set or refreshed.
     generation: u32,
     /// Cancels the listing for the current generation.
     cancel: Cancel,
-    /// The changed files for `generation`, once listed.
-    changes: Option<Arc<Changes>>,
+    /// The latest changed files listed for this comparison, and the generation
+    /// they were listed for. While a refresh runs, the previous list is kept.
+    changes: Option<(u32, Arc<Changes>)>,
 }
 
 /// What a listing needs to run without holding the session's lock.
@@ -100,47 +101,77 @@ impl Session {
         }
     }
 
+    /// Starts a new generation for the same comparison, after the repository
+    /// changed (TECH.md §4.6). Cancels the listing in progress, but keeps the
+    /// cached changes, so diffs can still be loaded until the refresh is done.
+    pub fn begin_refresh(&self) -> Ticket {
+        let mut state = self.state();
+        state.cancel.cancel();
+        state.cancel = Cancel::new();
+        state.generation += 1;
+        Ticket {
+            generation: state.generation,
+            comparison: state.comparison.clone(),
+            cancel: state.cancel.clone(),
+        }
+    }
+
     /// Lists the changes for `ticket`. Blocks, so run it on the blocking
     /// thread pool. `Cancelled` if a newer generation started meanwhile.
     pub fn list_changes(&self, ticket: &Ticket, algorithm: Algorithm) -> AppResult<ChangeSet> {
+        self.refresh(ticket, algorithm).map(|(set, _)| set)
+    }
+
+    /// Like [`Session::list_changes`], also returning the paths whose diff
+    /// may have changed since the previous list: every path, if there was
+    /// none.
+    pub fn refresh(
+        &self,
+        ticket: &Ticket,
+        algorithm: Algorithm,
+    ) -> AppResult<(ChangeSet, Vec<String>)> {
         let changes =
             self.repo
                 .changes_cancellable(&ticket.comparison, algorithm, &ticket.cancel)?;
         self.finish(ticket, changes)
     }
 
-    fn finish(&self, ticket: &Ticket, changes: Changes) -> AppResult<ChangeSet> {
+    fn finish(&self, ticket: &Ticket, changes: Changes) -> AppResult<(ChangeSet, Vec<String>)> {
         let mut state = self.state();
         if state.generation != ticket.generation {
             return Err(AppError::Cancelled);
         }
+        let files_changed = match &state.changes {
+            Some((_, previous)) => changes.paths_changed_since(previous),
+            None => changes.entries().map(|entry| entry.path.clone()).collect(),
+        };
         let set = ChangeSet {
             generation: ticket.generation,
             files: changes.entries().cloned().collect(),
             totals: changes.totals,
             no_merge_base: changes.no_merge_base,
         };
-        state.changes = Some(Arc::new(changes));
-        Ok(set)
+        state.changes = Some((ticket.generation, Arc::new(changes)));
+        Ok((set, files_changed))
     }
 
     /// The changed file at `path` in the current list, with the generation
-    /// and whether whitespace is hidden.
+    /// the list is for and whether whitespace is hidden.
     pub fn file(&self, path: &str) -> AppResult<(u32, ChangedFile, bool)> {
         let state = self.state();
-        let file = state
+        let (generation, file) = state
             .changes
             .as_ref()
-            .and_then(|changes| {
+            .and_then(|(generation, changes)| {
                 // `Changes::files` is sorted by path.
                 let index = changes
                     .files
                     .binary_search_by(|file| file.entry.path.as_str().cmp(path))
                     .ok()?;
-                Some(changes.files[index].clone())
+                Some((*generation, changes.files[index].clone()))
             })
             .ok_or_else(|| AppError::FileNotFound { path: path.into() })?;
-        Ok((state.generation, file, state.comparison.ignore_whitespace))
+        Ok((generation, file, state.comparison.ignore_whitespace))
     }
 
     /// Stops any listing in progress, when the window closes.
@@ -249,5 +280,54 @@ mod tests {
             session.file("no/such/file"),
             Err(AppError::FileNotFound { .. })
         ));
+    }
+
+    #[test]
+    fn a_refresh_keeps_the_comparison_and_reports_what_changed() {
+        let fixture = Fixture::build("worktree");
+        let session = session(&fixture);
+        let ticket = session.begin(Comparison::default());
+        session.list_changes(&ticket, Algorithm::Histogram).unwrap();
+
+        std::fs::write(fixture.path.join("modified.txt"), "edited\n").unwrap();
+        let ticket = session.begin_refresh();
+        assert_eq!(ticket.generation, 2);
+        assert_eq!(ticket.comparison, Comparison::default());
+        // Until the refresh is done, files come from the previous list.
+        let (generation, ..) = session.file("modified.txt").unwrap();
+        assert_eq!(generation, 1);
+
+        let (set, files_changed) = session.refresh(&ticket, Algorithm::Histogram).unwrap();
+        assert_eq!(set.generation, 2);
+        assert_eq!(files_changed, ["modified.txt"]);
+        let (generation, ..) = session.file("modified.txt").unwrap();
+        assert_eq!(generation, 2);
+    }
+
+    #[test]
+    fn a_refresh_cancels_the_previous_one_and_a_new_comparison_cancels_it() {
+        let fixture = Fixture::build("worktree");
+        let session = session(&fixture);
+        let first = session.begin_refresh();
+        let second = session.begin_refresh();
+        assert!(first.cancel.is_cancelled());
+        assert_eq!(
+            session.refresh(&first, Algorithm::Histogram).unwrap_err(),
+            AppError::Cancelled
+        );
+        // Without a previous list, every path counts as changed.
+        let (set, files_changed) = session.refresh(&second, Algorithm::Histogram).unwrap();
+        assert_eq!(files_changed.len(), set.files.len());
+
+        let refresh = session.begin_refresh();
+        let comparison = session.begin(Comparison::default());
+        assert!(refresh.cancel.is_cancelled());
+        assert_eq!(
+            session.refresh(&refresh, Algorithm::Histogram).unwrap_err(),
+            AppError::Cancelled
+        );
+        session
+            .list_changes(&comparison, Algorithm::Histogram)
+            .unwrap();
     }
 }
