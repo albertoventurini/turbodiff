@@ -7,12 +7,15 @@ import {
   events,
   type AppError,
   type ChangeSet,
+  type CommitItem,
   type Comparison,
   type OpenFailed,
   type RecentRepo,
+  type RefItem,
   type RepoOpened,
   type Settings,
   type SettingsPatch,
+  type Versioned,
   type WindowState,
 } from './types';
 
@@ -45,6 +48,29 @@ export function openRepo(path: string): Promise<void> {
 
 export function showOpenDialog(): Promise<void> {
   return commands.showOpenDialog();
+}
+
+export function listBranches(): Promise<Versioned<RefItem[]>> {
+  return unwrap(commands.listBranches());
+}
+
+export function listTags(): Promise<Versioned<RefItem[]>> {
+  return unwrap(commands.listTags());
+}
+
+/** Commits from `HEAD`, newest first. */
+export function listCommits(offset: number, limit: number): Promise<Versioned<CommitItem[]>> {
+  return unwrap(commands.listCommits(offset, limit));
+}
+
+/** Commits whose message contains `query`, ignoring case. */
+export function searchCommits(query: string, limit: number): Promise<Versioned<CommitItem[]>> {
+  return unwrap(commands.searchCommits(query, limit));
+}
+
+/** The commits whose SHA starts with `prefix` (4–40 hex characters). */
+export function resolveCommitPrefix(prefix: string): Promise<Versioned<CommitItem[]>> {
+  return unwrap(commands.resolveCommitPrefix(prefix));
 }
 
 export function setComparison(comparison: Comparison): Promise<ChangeSet> {

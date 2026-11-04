@@ -4,10 +4,13 @@ import { vi } from 'vitest';
 import type {
   AppError,
   ChangeSet,
+  CommitItem,
   OpenFailed,
   RecentRepo,
+  RefItem,
   RepoOpened,
   Settings,
+  Versioned,
   WindowState,
 } from '../types';
 import { DEFAULT_SETTINGS } from '../stores/settings.svelte';
@@ -62,12 +65,28 @@ export function changeSet(overrides: Partial<ChangeSet> = {}): ChangeSet {
   };
 }
 
+/** A response for generation 0, which the session store always accepts. */
+export function versioned<T>(value: T, generation = 0): Versioned<T> {
+  return { generation, value };
+}
+
 export const appVersion = vi.fn(() => Promise.resolve('0.0.0'));
 export const getWindowState = vi.fn((): Promise<WindowState> =>
   Promise.resolve({ repo: null, error: null }),
 );
 export const openRepo = vi.fn<(path: string) => Promise<void>>(() => Promise.resolve());
 export const showOpenDialog = vi.fn(() => Promise.resolve());
+export const listBranches = vi.fn(() => Promise.resolve(versioned<RefItem[]>([])));
+export const listTags = vi.fn(() => Promise.resolve(versioned<RefItem[]>([])));
+export const listCommits = vi.fn<
+  (offset: number, limit: number) => Promise<Versioned<CommitItem[]>>
+>(() => Promise.resolve(versioned([])));
+export const searchCommits = vi.fn<
+  (query: string, limit: number) => Promise<Versioned<CommitItem[]>>
+>(() => Promise.resolve(versioned([])));
+export const resolveCommitPrefix = vi.fn<(prefix: string) => Promise<Versioned<CommitItem[]>>>(() =>
+  Promise.resolve(versioned([])),
+);
 export const setComparison = vi.fn(() => Promise.resolve(changeSet()));
 export const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
 export const setSettings = vi.fn((patch: Partial<Settings>) =>
