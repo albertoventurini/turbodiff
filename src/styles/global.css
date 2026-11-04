@@ -1,0 +1,54 @@
+/* Mode-independent Primer tokens: sizes, spacing, radii and typography. */
+@import '@primer/primitives/dist/css/base/size/size.css';
+@import '@primer/primitives/dist/css/base/typography/typography.css';
+@import '@primer/primitives/dist/css/functional/size/size.css';
+@import '@primer/primitives/dist/css/functional/size/border.css';
+@import '@primer/primitives/dist/css/functional/size/radius.css';
+@import '@primer/primitives/dist/css/functional/spacing/space.css';
+@import '@primer/primitives/dist/css/functional/typography/typography.css';
+/* Colours, per theme and mode (generated). */
+@import './themes.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  background: var(--bgColor-default);
+  color: var(--fgColor-default);
+  /* The system UI font for interface text (PRD §7). */
+  font-family: system-ui, var(--fontStack-sansSerif);
+  font-size: var(--text-body-size-medium);
+  line-height: var(--text-body-lineHeight-medium);
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}

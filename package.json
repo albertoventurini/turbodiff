@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:tokens": "node scripts/build-tokens.js",
     "tauri": "tauri",
     "test": "vitest run",
     "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@primer/primitives": "^11.10.0",
     "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@tauri-apps/cli": "2.12.4",
     "@testing-library/jest-dom": "7.0.1",

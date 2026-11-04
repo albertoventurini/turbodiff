@@ -6,3 +6,4 @@ pnpm-lock.yaml
 src/lib/types.ts
 # Hand-written docs keep their own formatting.
 *.md
+src/styles/themes.css
