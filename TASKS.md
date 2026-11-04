@@ -25,9 +25,9 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 - [x] Fixture scripts in `tests/fixtures/` covering every case listed in TECH §10.1.
 - [x] Open a repository with `gix::discover`. Return a typed `NotARepository` error when there isn't one (TECH §4.1).
-- [ ] List branches, with the current one marked, local before remote, sorted by most recent commit.
-- [ ] List tags, newest first.
-- [ ] Commits:
+- [x] List branches, with the current one marked, local before remote, sorted by most recent commit.
+- [x] List tags, newest first.
+- [x] Commits:
   - paginated list from `HEAD`,
   - `search_commits` by message,
   - `resolve_commit_prefix` for SHAs (TECH §4.2).

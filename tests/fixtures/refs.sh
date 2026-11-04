@@ -31,3 +31,18 @@ git update-ref refs/remotes/origin/main origin-main-base
 git branch -q -D origin-main-base
 git update-ref refs/remotes/origin/feature/login feature/login
 git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+
+# Commits that aren't on any branch, made until one shares its first four hex
+# digits with another commit, for an ambiguous SHA prefix.
+git rev-list --all | cut -c1-4 > .git/prefixes
+n=0
+while :; do
+    n=$((n + 1))
+    sha=$(git commit-tree -p HEAD -m "Attempt $n" "HEAD^{tree}")
+    if grep -q "^${sha:0:4}\$" .git/prefixes; then
+        break
+    fi
+    echo "${sha:0:4}" >> .git/prefixes
+done
+rm .git/prefixes
+git update-ref refs/fixture/ambiguous "$sha"

@@ -115,11 +115,12 @@ Repository access is a separate library crate, `turbodiff-repo`, in a Cargo work
 
 ### 4.2 Refs (for the picker)
 
-- **Branches:** local branches, then remote-tracking branches, with the current branch marked. Sorted by most recent commit.
-- **Tags:** sorted newest first, using the tagger date, or the commit date for lightweight tags.
-- **Commits:** a paginated walk from `HEAD`, newest first (`offset`, `limit` = 50). Each entry has the short SHA, subject, author name and commit time. Whether to walk all branches instead is PRD open question 2.
-- **SHA lookup:** if the search text is 4–40 hex characters, `resolve_commit_prefix` looks it up. An ambiguous prefix returns all matching candidates.
-- **Search** for branches and tags runs in the frontend over the loaded lists. Search over commit messages runs in the backend (`search_commits(query, limit)`), stopping after a fixed number of commits.
+- **Branches:** the current branch first, then local branches, then remote-tracking branches, each group sorted by most recent commit. Symbolic refs such as `origin/HEAD` are left out. Each `RefItem` has the short and full name, the peeled commit and a time.
+- **Tags:** sorted newest first, using the tagger date, or the commit date for lightweight tags (git's `creatordate`). Tags that don't point to a commit are left out.
+- **Commits:** a paginated walk from `HEAD` by commit time, newest first (`offset`, `limit` = 50), as `git log` orders them. Each entry has the full and short SHA (7 characters), subject, author name and commit time. Whether to walk all branches instead is PRD open question 2.
+- **SHA lookup:** if the search text is 4–40 hex characters (either case), `resolve_commit_prefix` looks it up in the object database. An ambiguous prefix returns all matching commits, newest first. Other text returns nothing.
+- **Search** for branches and tags runs in the frontend over the loaded lists. Search over commit messages runs in the backend (`search_commits(query, limit)`), matching the whole message without regard to case, and stopping after `SEARCH_COMMITS_SCAN_LIMIT` (10,000) commits.
+- Times are seconds since the epoch. They're `i64` in Rust and exported to TypeScript as `number`.
 
 ### 4.3 Comparison model
 
