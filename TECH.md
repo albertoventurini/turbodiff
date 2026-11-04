@@ -317,7 +317,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 
 ### 10.3 Not automated in v1
 
-End-to-end tests of the whole app, the read-only before-and-after check, and performance benchmarks. These are covered by a short **manual pre-release checklist** in `RELEASING.md`.
+End-to-end tests of the whole app, the read-only before-and-after check, and performance benchmarks. These are covered by a short **manual pre-release checklist** in `RELEASING.md`, which will be written in milestone M9 of [TASKS.md](TASKS.md).
 
 ---
 
