@@ -2,20 +2,13 @@
   import { SvelteSet } from 'svelte/reactivity';
   import { buildTree, comparePaths, treeRows, type TreeRow } from '../fileTree';
   import { getStores } from '../stores/context';
-  import type { FileEntry, Status } from '../types';
+  import type { FileEntry } from '../types';
   import Icon from './Icon.svelte';
+  import StatusBadge, { STATUS_NAMES } from './StatusBadge.svelte';
 
   let { files }: { files: FileEntry[] } = $props();
 
   const { view } = getStores();
-
-  const STATUS_NAMES: Record<Status, string> = {
-    A: 'Added',
-    M: 'Modified',
-    D: 'Deleted',
-    R: 'Renamed',
-    T: 'Type changed',
-  };
 
   /** Folders the user collapsed, by path. Kept while the files change. */
   const collapsed = new SvelteSet<string>();
@@ -73,9 +66,7 @@
           title={describe(file)}
           onclick={() => view.toggleSelected(file.path)}
         >
-          <span class="badge status-{file.status}" aria-label={STATUS_NAMES[file.status]}>
-            {file.status}
-          </span>
+          <StatusBadge status={file.status} />
           <span class="path">
             {#if dir}<span class="dir">{dir}</span>{/if}<span class="name">{base}</span>
           </span>
@@ -168,38 +159,6 @@
   .file .name {
     flex: 0 0 auto;
     max-width: 100%;
-  }
-
-  .badge {
-    display: inline-flex;
-    flex: none;
-    align-items: center;
-    justify-content: center;
-    width: var(--base-size-16);
-    height: var(--base-size-16);
-    border-radius: var(--borderRadius-small);
-    font-family: var(--fontStack-monospace);
-    font-size: var(--text-caption-size);
-    font-weight: var(--base-text-weight-semibold);
-    line-height: 1;
-  }
-
-  .status-A {
-    background: var(--bgColor-success-muted);
-    color: var(--fgColor-success);
-  }
-  .status-M,
-  .status-T {
-    background: var(--bgColor-attention-muted);
-    color: var(--fgColor-attention);
-  }
-  .status-D {
-    background: var(--bgColor-danger-muted);
-    color: var(--fgColor-danger);
-  }
-  .status-R {
-    background: var(--bgColor-accent-muted);
-    color: var(--fgColor-accent);
   }
 
   .counts {

@@ -14,3 +14,16 @@ if (!window.matchMedia) {
     removeEventListener: () => {},
   }));
 }
+
+// jsdom has no layout, so nothing ever resizes. Svelte's size bindings need
+// the class to exist.
+if (!window.ResizeObserver) {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+}

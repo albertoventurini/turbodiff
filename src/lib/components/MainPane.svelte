@@ -3,10 +3,11 @@
   import { compareLabel, refLabel } from '../refs';
   import { getStores } from '../stores/context';
   import Button from './Button.svelte';
+  import DiffList from './DiffList.svelte';
   import EmptyState from './EmptyState.svelte';
   import Notice from './Notice.svelte';
 
-  const { session, view } = getStores();
+  const { session } = getStores();
 
   const base = $derived(refLabel(session.comparison.base));
   const compare = $derived(compareLabel(session.comparison.compare));
@@ -59,18 +60,7 @@
         {/if}
       </EmptyState>
     {:else}
-      <!--
-        The diff view comes in M5 (PRD §6.6). It shows only `view.selected` when
-        a file is selected, and otherwise all files, keeping `view.current` set
-        to the file at the top of the pane.
-      -->
-      <div class="placeholder" data-testid="diff-placeholder">
-        {#if view.selected}
-          {view.selected}
-        {:else}
-          {session.changes.totals.files} changed files
-        {/if}
-      </div>
+      <DiffList />
     {/if}
   {:else if session.loading}
     <p class="loading" role="status">Loading changes…</p>
@@ -79,22 +69,16 @@
 
 <style>
   .main {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
     min-height: 0;
     overflow: auto;
   }
 
   .notice {
+    flex: none;
     margin: var(--base-size-16) var(--base-size-16) 0;
-  }
-
-  .placeholder {
-    margin: var(--base-size-16);
-    padding: var(--base-size-40);
-    border: var(--borderWidth-thin) dashed var(--borderColor-default);
-    border-radius: var(--borderRadius-medium);
-    color: var(--fgColor-muted);
-    text-align: center;
   }
 
   /* Shown only if loading takes a moment, so a quick load doesn't flicker. */

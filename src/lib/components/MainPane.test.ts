@@ -79,7 +79,7 @@ describe('MainPane', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       'No merge base. main and feature have no common history, so this is a direct (two-dot) comparison.',
     );
-    expect(screen.getByTestId('diff-placeholder')).toHaveTextContent('1 changed files');
+    expect(screen.getByRole('region', { name: 'Diff' })).toBeInTheDocument();
   });
 
   it('offers to retry after another error', async () => {
