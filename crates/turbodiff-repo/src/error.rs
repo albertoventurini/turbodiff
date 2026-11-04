@@ -14,6 +14,9 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error("{0}")]
     Internal(String),
+    /// The operation was stopped with [`crate::Cancel`].
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl Error {

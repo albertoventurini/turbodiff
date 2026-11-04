@@ -12,7 +12,7 @@ use crate::compare::{Comparison, Resolved, Right};
 use crate::content::{self, Loader, Version};
 use crate::linediff::{self, Algorithm};
 use crate::renames::{self, Candidate, Content, Which};
-use crate::{Error, Repo, Result};
+use crate::{Cancel, Error, Repo, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 pub enum Status {
@@ -90,8 +90,19 @@ impl Repo {
     /// Resolves `comparison` and lists what changed, with line counts from
     /// `algorithm` (PRD §6.8).
     pub fn changes(&self, comparison: &Comparison, algorithm: Algorithm) -> Result<Changes> {
+        self.changes_cancellable(comparison, algorithm, &Cancel::new())
+    }
+
+    /// Like [`Repo::changes`], but returns `Cancelled` soon after `cancel`
+    /// is set.
+    pub fn changes_cancellable(
+        &self,
+        comparison: &Comparison,
+        algorithm: Algorithm,
+        cancel: &Cancel,
+    ) -> Result<Changes> {
         let resolved = self.resolve(comparison)?;
-        self.changes_for(&resolved, algorithm, comparison.ignore_whitespace)
+        self.changes_for(&resolved, algorithm, comparison.ignore_whitespace, cancel)
     }
 
     pub fn changes_for(
@@ -99,16 +110,21 @@ impl Repo {
         resolved: &Resolved,
         algorithm: Algorithm,
         ignore_whitespace: bool,
+        cancel: &Cancel,
     ) -> Result<Changes> {
         let repo = self.local();
         let mut loader = Loader::new(&repo, self.root())?;
         let raw = match resolved.right {
-            Right::Tree(right) => tree_changes(&repo, resolved.left, right)?,
-            Right::WorkTree => worktree_changes(&repo, self.root(), resolved.left, &mut loader)?,
+            Right::Tree(right) => tree_changes(&repo, resolved.left, right, cancel)?,
+            Right::WorkTree => {
+                worktree_changes(&repo, self.root(), resolved.left, &mut loader, cancel)?
+            }
         };
+        cancel.check()?;
         let mut files = pair_renames(raw, &mut loader)?
             .into_iter()
             .map(|(old, new, similarity)| {
+                cancel.check()?;
                 let entry = entry(
                     &mut loader,
                     &old,
@@ -135,7 +151,12 @@ impl Repo {
 }
 
 /// Commit vs commit: a tree-to-tree diff. Renames are found afterwards.
-fn tree_changes(repo: &gix::Repository, left: ObjectId, right: ObjectId) -> Result<Vec<RawChange>> {
+fn tree_changes(
+    repo: &gix::Repository,
+    left: ObjectId,
+    right: ObjectId,
+    cancel: &Cancel,
+) -> Result<Vec<RawChange>> {
     use gix::object::tree::diff::ChangeDetached as Change;
 
     let old_tree = repo.find_tree(left)?;
@@ -152,6 +173,7 @@ fn tree_changes(repo: &gix::Repository, left: ObjectId, right: ObjectId) -> Resu
     };
     let mut raw = Vec::new();
     for change in repo.diff_tree_to_tree(&old_tree, &new_tree, options)? {
+        cancel.check()?;
         let (old, new) = match &change {
             Change::Addition {
                 location,
@@ -194,6 +216,7 @@ fn worktree_changes(
     root: &std::path::Path,
     left: ObjectId,
     loader: &mut Loader<'_>,
+    cancel: &Cancel,
 ) -> Result<Vec<RawChange>> {
     let mut paths = BTreeSet::new();
     let mut untracked = HashSet::new();
@@ -205,6 +228,7 @@ fn worktree_changes(
         .tree_index_track_renames(gix::status::tree_index::TrackRenames::Disabled)
         .into_iter(None)?;
     for item in status {
+        cancel.check()?;
         let item = item?;
         if let gix::status::Item::IndexWorktree(index_worktree::Item::DirectoryContents {
             entry,
@@ -230,6 +254,7 @@ fn worktree_changes(
         .unwrap_or(true);
     let mut raw = Vec::new();
     for path in paths {
+        cancel.check()?;
         let old = left_tree
             .lookup_entry(path.split(|&b| b == b'/'))?
             .filter(|entry| !entry.mode().is_tree())

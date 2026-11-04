@@ -3,6 +3,7 @@
 //! This is the only crate that may use `gix`, and it must not depend on Tauri.
 
 mod cache;
+mod cancel;
 mod changes;
 mod compare;
 mod content;
@@ -13,6 +14,7 @@ mod refs;
 mod renames;
 mod repo;
 
+pub use cancel::Cancel;
 pub use changes::{ChangedFile, Changes, FileEntry, Status, Totals};
 pub use compare::{CompareSide, Comparison, Mode, Resolved};
 pub use error::{Error, Result};

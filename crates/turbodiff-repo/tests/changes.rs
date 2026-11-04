@@ -429,3 +429,21 @@ fn unknown_refs_are_ref_not_found() {
         .unwrap();
     assert!(matches!(err, turbodiff_repo::Error::RefNotFound(spec) if spec == "no-such-branch"));
 }
+
+#[test]
+fn a_cancelled_listing_stops_with_cancelled() {
+    let fixture = Fixture::build("three_dot");
+    let repo = Repo::open(&fixture.path).unwrap();
+    let cancel = turbodiff_repo::Cancel::new();
+    cancel.cancel();
+    for comparison in [
+        worktree("HEAD", Mode::ThreeDot),
+        commits("main", "feature", Mode::TwoDot),
+    ] {
+        let err = repo
+            .changes_cancellable(&comparison, Algorithm::Histogram, &cancel)
+            .err()
+            .unwrap();
+        assert!(matches!(err, turbodiff_repo::Error::Cancelled));
+    }
+}
