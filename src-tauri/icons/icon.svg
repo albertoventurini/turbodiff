@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- The source of every icon size: `pnpm tauri icon src-tauri/icons/icon.svg`.
+       A ± in GitHub's diff green and red, on the macOS icon grid (824 px of 1024). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#24292f"/>
+  <rect x="288" y="352" width="448" height="77" rx="19" fill="#2da44e"/>
+  <rect x="474" y="211" width="76" height="253" rx="19" fill="#2da44e"/>
+  <rect x="288" y="595" width="448" height="77" rx="19" fill="#cf222e"/>
+</svg>

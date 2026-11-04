@@ -29,6 +29,20 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.png"
-    ]
+    ],
+    "publisher": "Alberto Venturini",
+    "copyright": "© 2026 Alberto Venturini",
+    "category": "DeveloperTool",
+    "shortDescription": "A read-only desktop viewer for git diffs",
+    "longDescription": "TurboDiff shows the changes in a git repository the way GitHub's \"Files changed\" view does: the working tree against HEAD, or any two branches, tags or commits. It never writes to the repository.",
+    "homepage": "https://github.com/albertoventurini/turbodiff",
+    "linux": {
+      "deb": {
+        "section": "devel"
+      }
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }
