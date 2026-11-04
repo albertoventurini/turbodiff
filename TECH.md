@@ -25,7 +25,7 @@ This document explains *how* TurboDiff is built. It covers the stack, the archit
 | Colours | **`@primer/primitives`** (GitHub Primer tokens) as CSS custom properties | Matches GitHub exactly. |
 | File watching | **`notify`**, with our own debounce | Works across platforms. `notify-debouncer-full` was the first plan, but it debounces each path separately, so a burst like a checkout would arrive as several batches (§4.6). |
 | Tests | Rust unit and fixture tests; **Vitest** + Testing Library for Svelte | See §10. |
-| CI / release | **GitHub Actions** + **`tauri-action`** | Lint and tests on Linux and macOS; release builds when a version tag is pushed. |
+| CI / release | **GitHub Actions** + **`tauri-action`** | Lint on Linux, tests on Linux and macOS; release builds when a version tag is pushed. |
 | macOS signing | **Deferred** | Unsigned builds until there's an Apple Developer account. |
 
 **Accepted trade-off of using gitoxide.** TurboDiff shows the same files, statuses, renames and changes as `git diff`. Hunk boundaries may occasionally differ. Rename detection reimplements git's own similarity estimate and pairing (§4.4), so it agrees with `git diff -M` even near the 50% threshold. Function names after `@@` hunk headers are not shown in v1.
@@ -419,10 +419,11 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 
 **GitHub Actions**
 
-- **`ci.yml`** runs on every push and PR, on `ubuntu-latest` and `macos-latest`:
-  - Node 26, with pnpm set up from `packageManager` in `package.json`,
-  - `pnpm install --frozen-lockfile`, `pnpm lint` (ESLint, Prettier check, `svelte-check`), `pnpm test`,
-  - `cargo fmt --check`, `cargo clippy -D warnings` (plus the stale-path check in §8), `cargo test`, for the whole Cargo workspace from the repository root,
+- **`ci.yml`** runs on every push and PR:
+  - Node 26, with pnpm set up from `packageManager` in `package.json`, and `pnpm install --frozen-lockfile`,
+  - tests on `ubuntu-latest` and `macos-latest`: `pnpm test` and `cargo test`,
+  - lint on `ubuntu-latest` only: `pnpm lint` (ESLint, Prettier check, `svelte-check`), `cargo fmt --check` and `cargo clippy -D warnings` (plus the stale-path check in §8). macOS runners are scarce (queued macOS jobs were being cancelled), and the macOS-only code uses `cfg!()`, so clippy checks it on Linux as well,
+  - all Cargo commands run on the whole workspace from the repository root,
   - Linux system packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
 - **`release.yml`** runs when a `v*` tag is pushed and uses `tauri-action` to build:
   - Linux, on `ubuntu-22.04` (the oldest runner, so the bundles work with an older glibc): **AppImage** and **.deb** (`--bundles deb,appimage`),

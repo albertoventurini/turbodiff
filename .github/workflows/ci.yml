@@ -15,18 +15,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Linux only: macOS runners are scarce, and the macOS-only code uses cfg!(),
+  # so clippy checks it on Linux too. The test job still builds on macOS.
   lint:
-    name: Lint (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    name: Lint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - name: Install Linux system packages
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
