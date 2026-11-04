@@ -49,6 +49,14 @@ describe('SettingsStore', () => {
     expect(api.setSettings).toHaveBeenCalledWith({ sidebarWidth: 320 });
     expect(settings.value.sidebarWidth).toBe(320);
   });
+
+  it('resets to the defaults', async () => {
+    const settings = new SettingsStore();
+    settings.value = { ...DEFAULT_SETTINGS, fontSize: 20, sidebarWidth: 320 };
+    await settings.reset();
+    expect(api.resetSettings).toHaveBeenCalled();
+    expect(settings.value).toEqual({ ...DEFAULT_SETTINGS, sidebarWidth: 320 });
+  });
 });
 
 describe('RecentStore', () => {

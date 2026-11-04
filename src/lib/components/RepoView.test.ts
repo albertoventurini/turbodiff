@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { tick } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../test/fakeApi';
 import { changeSet } from '../test/fakeApi';
@@ -35,6 +36,18 @@ describe('RepoView', () => {
     expect(screen.queryByRole('separator')).toBeNull();
     await fireEvent.click(screen.getByRole('button', { name: 'Show sidebar' }));
     expect(screen.getByRole('complementary')).toBeInTheDocument();
+  });
+
+  it('lists the files again when the diff algorithm changes', async () => {
+    const stores = setup();
+    api.setComparison.mockResolvedValue(changeSet());
+    stores.settings.value = { ...DEFAULT_SETTINGS, fontSize: 16 };
+    await tick();
+    expect(api.setComparison).not.toHaveBeenCalled();
+
+    stores.settings.value = { ...DEFAULT_SETTINGS, diffAlgorithm: 'myers' };
+    await tick();
+    expect(api.setComparison).toHaveBeenCalledExactlyOnceWith(stores.session.comparison);
   });
 
   it('starts at the saved sidebar width and saves a new one after a drag', async () => {

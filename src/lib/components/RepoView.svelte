@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { refLabel } from '../refs';
   import { getStores } from '../stores/context';
   import { SIDEBAR_WIDTHS } from '../stores/settings.svelte';
@@ -24,6 +25,16 @@
     const paths = new Set(files.map((file) => file.path));
     if (view.selected !== null && !paths.has(view.selected)) view.selected = null;
     for (const path of view.collapsed) if (!paths.has(path)) view.collapsed.delete(path);
+  });
+
+  // The file list's `+N −M` counts depend on the diff algorithm, so a new one
+  // lists the files again (TECH.md §4.7).
+  const algorithm = $derived(settings.value.diffAlgorithm);
+  let listedWith = untrack(() => algorithm);
+  $effect(() => {
+    if (algorithm === listedWith) return;
+    listedWith = algorithm;
+    untrack(() => void session.compare(session.comparison));
   });
 
   /** `Esc` goes back to all files (PRD §6.10), unless a popup used it to close. */

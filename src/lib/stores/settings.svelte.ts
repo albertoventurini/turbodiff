@@ -24,8 +24,10 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 280,
 };
 
-/** The range `sidebarWidth` is clamped to by the backend. */
+/** The ranges the backend clamps numbers to (src-tauri/src/app/settings.rs). */
 export const SIDEBAR_WIDTHS = { min: 160, max: 800 };
+export const FONT_SIZES = { min: 10, max: 24 };
+export const CONTEXT_LINES = { min: 0, max: 20 };
 
 export class SettingsStore {
   /** Starts from the boot script's copy, so the first render is already right. */
@@ -49,5 +51,10 @@ export class SettingsStore {
 
   async update(patch: SettingsPatch): Promise<void> {
     this.value = await api.setSettings(patch);
+  }
+
+  /** Restores the defaults of every setting in the Settings window. */
+  async reset(): Promise<void> {
+    this.value = await api.resetSettings();
   }
 }

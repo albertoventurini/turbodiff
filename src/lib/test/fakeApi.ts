@@ -106,6 +106,10 @@ export const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
 export const setSettings = vi.fn((patch: Partial<Settings>) =>
   Promise.resolve({ ...DEFAULT_SETTINGS, ...patch }),
 );
+export const resetSettings = vi.fn(() =>
+  Promise.resolve({ ...DEFAULT_SETTINGS, sidebarWidth: 320 }),
+);
+export const listMonospaceFonts = vi.fn((): Promise<string[]> => Promise.resolve([]));
 export const listRecent = vi.fn((): Promise<RecentRepo[]> => Promise.resolve([]));
 export const removeRecent = vi.fn<(path: string) => Promise<RecentRepo[]>>(() =>
   Promise.resolve([]),

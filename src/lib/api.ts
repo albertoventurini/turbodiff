@@ -104,6 +104,16 @@ export function setSettings(patch: SettingsPatch): Promise<Settings> {
   return commands.setSettings(patch);
 }
 
+/** Restores every setting in the Settings window to its default. */
+export function resetSettings(): Promise<Settings> {
+  return commands.resetSettings();
+}
+
+/** The family names of the installed monospace fonts, sorted. */
+export function listMonospaceFonts(): Promise<string[]> {
+  return unwrap(commands.listMonospaceFonts());
+}
+
 export function listRecent(): Promise<RecentRepo[]> {
   return commands.listRecent();
 }

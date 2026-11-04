@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import EmptyState from './lib/components/EmptyState.svelte';
+  import { onMount, untrack } from 'svelte';
   import RepoView from './lib/components/RepoView.svelte';
+  import SettingsWindow from './lib/components/SettingsWindow.svelte';
   import Welcome from './lib/components/Welcome.svelte';
   import { setStores } from './lib/stores/context';
   import { RecentStore } from './lib/stores/recent.svelte';
@@ -16,11 +16,22 @@
   const session = new SessionStore();
   const recent = new RecentStore();
   const system = new SystemMode();
-  setStores({ session, view: new ViewStore(settings.value.diffStyle), settings, recent, system });
+  const view = new ViewStore(settings.value.diffStyle);
+  setStores({ session, view, settings, recent, system });
 
   $effect(() => {
     const { theme, appearance } = settings.value;
     applyTheme(document.documentElement, theme, resolveMode(appearance, system.dark));
+  });
+
+  // A new default diff style applies to every open window (PRD §6.8). Other
+  // settings changes leave the toolbar's choice alone.
+  const defaultStyle = $derived(settings.value.diffStyle);
+  let appliedStyle = untrack(() => defaultStyle);
+  $effect(() => {
+    if (defaultStyle === appliedStyle) return;
+    appliedStyle = defaultStyle;
+    view.diffStyle = defaultStyle;
   });
 
   onMount(() => {
@@ -31,10 +42,7 @@
 </script>
 
 {#if isSettingsWindow}
-  <!-- The Settings window comes in M8 (PRD §6.8). -->
-  <EmptyState icon="info" title="Settings">
-    <p>Settings aren't available yet.</p>
-  </EmptyState>
+  <SettingsWindow />
 {:else if session.repo}
   <RepoView />
 {:else}
