@@ -54,9 +54,7 @@ pub enum FileDiff {
     },
     #[serde(rename_all = "camelCase")]
     Binary {
-        #[specta(type = Option<f64>)]
         old_size: Option<u64>,
-        #[specta(type = Option<f64>)]
         new_size: Option<u64>,
     },
     #[serde(rename_all = "camelCase")]

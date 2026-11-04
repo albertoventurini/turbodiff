@@ -95,8 +95,11 @@ turbodiff/
 │   └── src/
 │       ├── main.rs
 │       ├── commands.rs     # #[tauri::command] surface
+│       ├── events.rs       # events sent to the webview
+│       ├── session.rs      # per-window session, generation, cancellation
+│       ├── error.rs        # AppError
 │       ├── watch/
-│       └── app/            # windows, CLI, settings, recent repos
+│       └── app/            # windows, CLI, settings, recent repos, menus
 ├── tests/fixtures/         # scripts that build fixture repositories
 └── .github/workflows/
 ```
@@ -196,56 +199,64 @@ Similarity is git's estimate: content is cut into spans at each newline or every
 
 ### 4.7 App services
 
-- **CLI:** `turbodiff [PATH] [--base REF] [--compare REF]`, using `tauri-plugin-cli`. `tauri-plugin-single-instance` sends the arguments of a second launch to the running process, which opens or focuses the right window. The CLI accepts any revision expression and resolves it with gitoxide's `rev_parse`.
-- **Settings:** JSON stored in the platform config directory, which Tauri names after the app identifier `com.albertoventurini.turbodiff` (`~/.config/com.albertoventurini.turbodiff/` or `~/Library/Application Support/com.albertoventurini.turbodiff/`), through `tauri-plugin-store`. Changes are sent to all windows with a `settings-changed` event.
-- **Recent repositories:** in the same store, at most 10 entries, deduplicated by work-tree path.
-- **Window size, position and sidebar width:** `tauri-plugin-window-state` for the window; the sidebar width is kept in the settings store.
-- **Native menus:** built with Tauri's menu API (File › Open, Open Recent, Close; app menu › Settings, Quit). Shortcuts are limited to PRD §6.10.
-- **Drag and drop:** the window's file-drop event. The first dropped path that is a folder gets opened.
+- **Windows and sessions** (`src-tauri/src/app/windows.rs`, `session.rs`): every repository window is created from Rust with the label `repo-N`, the lowest number free. Each one has a slot in `AppState`, holding its `Session` or nothing while it shows the welcome screen. Opening a folder (from `open_repo`, the menu, a drop or the command line) opens the repository on the blocking pool, then decides under one lock where it goes (`app/placement.rs`): the window that already shows that work-tree root is focused; otherwise the window the request came from is used if it's empty; otherwise a new window opens. A window that's already loaded gets `repo-opened`; a new window asks with `get_window_state` when its page loads. Errors from requests with no caller waiting (menu, drop, second launch) go to the window as `open-failed`. If the first launch's path isn't a repository, the welcome window opens and `get_window_state` returns the error once. Closing a window drops its session and cancels any listing in progress.
+- **Generation and cancellation:** a session's `generation` starts at 0 and goes up each time `set_comparison` is called (and, from M7, on each refresh). Starting a generation cancels the previous one's listing through a `turbodiff_repo::Cancel` flag, which `changes` checks between files, and a listing that finishes for an older generation is dropped (`Cancelled`) instead of replacing the cached `Changes`. `get_file_diff` and `get_lines` look files up in the cached list by path.
+- **CLI:** `turbodiff [PATH] [--base REF] [--compare REF]`, parsed with `clap` (`app/cli.rs`) rather than `tauri-plugin-cli`, because the same parser has to handle the arguments a second launch forwards, and it can be unit-tested. Without `PATH` the welcome screen is shown, and `--base`/`--compare` need a `PATH`. A relative `PATH` is resolved against the launch's working directory. `tauri-plugin-single-instance` sends the arguments of a second launch to the running process, which opens or focuses the right window (or focuses an empty window, or opens one, for a launch without `PATH`). Arguments are parsed before the plugin runs, so `--help`, `--version` and usage errors print in the terminal. The CLI accepts any revision expression and resolves it with gitoxide's `rev_parse`. When the repository is already open, a launch that names refs sends that window `repo-opened` with the new comparison.
+- **Settings:** JSON stored in `settings.json` in the platform config directory, which Tauri names after the app identifier `com.albertoventurini.turbodiff` (`~/.config/com.albertoventurini.turbodiff/` or `~/Library/Application Support/com.albertoventurini.turbodiff/`), through `tauri-plugin-store`, used only from Rust. Stored values are read field by field, so a missing or invalid value gets its default without resetting the others. `set_settings` takes a patch: numbers are clamped to their ranges (PRD §6.8) and a tab width other than 2, 4 or 8 is ignored. An empty `codeFont` means the platform's default monospace font. Changes are sent to all windows with a `settings-changed` event. Settings that change the file list (the diff algorithm) take effect when the frontend calls `set_comparison` again.
+- **Recent repositories:** in the same store, at most 10 work-tree roots, most recent first, deduplicated. Whether each one still exists is checked when the list is read (`available`). Changes are sent as `recent-changed` and rebuild the Open Recent menu.
+- **Window size, position and sidebar width:** `tauri-plugin-window-state` saves each window's geometry by label when the app exits and restores it when a window with that label is created, so reusing the lowest free `repo-N` label puts a new window where that window was last time. The sidebar width is the `sidebarWidth` setting.
+- **Native menus** (`app/menu.rs`), built with Tauri's menu API. macOS: app menu › Settings…, Quit; File › Open…, Open Recent, Close Window; Edit › Copy, Select All (the system items, which the webview needs for the clipboard). Linux has no app menu, so File holds Open…, Open Recent, Settings…, Close Window and Quit. The only accelerator is Quit's `Mod+Q` (PRD §6.10). Open uses `tauri-plugin-dialog`'s folder picker from Rust; the webview has no dialog permission and asks for the picker with `show_open_dialog`. Settings… opens the `settings` window (`index.html?window=settings`).
+- **Drag and drop:** the window's drag-drop event, handled in Rust. The first dropped path that is a folder gets opened, targeting the window it was dropped on.
 
 ---
 
 ## 5. IPC API
 
-All commands are `async` and return `Result<T, AppError>`. `AppError` is a tagged enum (`NotARepository`, `RefNotFound`, `Io`, `Internal`), so the UI can show the matching empty or error state (PRD §7).
+All commands are `async`. Repository work runs on Tauri's blocking thread pool. Commands that can fail return `Result<T, AppError>`. `AppError` is an enum tagged by `kind` (`notARepository`, `refNotFound`, `noRepository`, `fileNotFound`, `cancelled`, `io`, `internal`), so the UI can show the matching empty or error state (PRD §7). `cancelled` means a newer comparison replaced the request, and `fileNotFound` that the path isn't in the current file list; the UI ignores both. Commands act on the calling window's session.
 
 | Command | Returns |
 |---|---|
-| `open_repo(path)` | `RepoInfo { root, name, head: HeadInfo }` |
-| `list_branches()` / `list_tags()` | `RefItem[]` |
-| `list_commits(offset, limit)` / `search_commits(query, limit)` | `CommitItem[]` |
-| `resolve_commit_prefix(prefix)` | `CommitItem[]` |
-| `set_comparison(Comparison)` | `ChangeSet { generation, files: FileEntry[], totals }` |
-| `get_file_diff(path, { force })` | `FileDiff` |
-| `get_lines(path, side, start, end)` | `string[]` |
+| `get_window_state()` | `WindowState { repo: RepoOpened \| null, error: AppError \| null }`, what the window shows when its page loads |
+| `open_repo(path)` | nothing; the window that shows the repository gets `repo-opened` (§4.7) |
+| `show_open_dialog()` | nothing; the folder picker, then as `open_repo`, with errors as `open-failed` |
+| `list_branches()` / `list_tags()` | `Versioned<RefItem[]>` |
+| `list_commits(offset, limit)` / `search_commits(query, limit)` | `Versioned<CommitItem[]>` |
+| `resolve_commit_prefix(prefix)` | `Versioned<CommitItem[]>` |
+| `set_comparison(Comparison)` | `ChangeSet { generation, files: FileEntry[], totals, noMergeBase }` |
+| `get_file_diff(path, force)` | `Versioned<FileDiff>` |
+| `get_lines(path, side, start, end)` | `Versioned<string[]>` |
 | `get_settings()` / `set_settings(patch)` | `Settings` |
 | `list_recent()` / `remove_recent(path)` | `RecentRepo[]` |
 
-**Events:** `repo-changed`, `comparison-invalid`, `settings-changed`.
+`Versioned<T>` is `{ generation, value: T }`. `RepoOpened` is `{ repo: RepoInfo, comparison: Comparison }`, where `RepoInfo` is `{ root, name, head: HeadInfo }`.
+
+**Events:** `settings-changed` (`Settings`, to every window), `recent-changed` (`RecentRepo[]`, to every window), `repo-opened` and `open-failed { error }` (to one window, §4.7), and from M7 `repo-changed` and `comparison-invalid`.
 
 **Shared types** (Rust structs that are serialised to JSON) get TypeScript definitions generated with **`specta`/`tauri-specta`**, so `src/lib/types.ts` never falls out of sync with the Rust code.
 
 - The data types returned by `turbodiff-repo` derive `serde::Serialize` and `specta::Type` (`specta` isn't a Tauri crate), so commands can return them directly. `serde` and `specta` versions are shared through `[workspace.dependencies]`.
 - Tauri 2 support in `tauri-specta` has only been released as release candidates, so `specta`, `tauri-specta` and `specta-typescript` are pinned to exact versions (`=`) in `Cargo.toml`, as the crate recommends.
+- **One TypeScript type per Rust type.** By default `tauri-specta` splits any type with an `Option` field into `X_Serialize` and `X_Deserialize` (`oldPath: string | null` versus `oldPath?: string | null`) and exports `X` as their union. The builder turns this off (`disable_serde_phases`). Results from Rust have their optional fields as `T | null`, which is what serde sends. The one input with optional fields, `SettingsPatch`, marks them `#[specta(optional)]`, so the frontend can leave them out.
+- 64-bit integers (times, file sizes) are exported as `number` (`dangerously_cast_bigints_to_number`), since none comes near 2^53.
 - Debug builds rewrite `types.ts` on startup. A `cargo test` test compares the committed file with freshly generated output. If they differ, it rewrites the file and fails, so CI catches a stale `types.ts`.
 
 ```ts
 type FileEntry = {
-  path: string; oldPath?: string; status: 'A'|'M'|'D'|'R'|'T';
-  similarity?: number; additions: number; deletions: number;
-  binary: boolean; modeChange?: [string, string]; submodule?: [string, string];
+  path: string; oldPath: string | null; status: 'A'|'M'|'D'|'R'|'T';
+  similarity: number | null; additions: number; deletions: number;
+  binary: boolean; modeChange: [string, string] | null; submodule: [string, string] | null;
 };
 type FileDiff =
   | { kind: 'text'; hunks: Hunk[]; oldLineCount: number; newLineCount: number;
       noNewlineAtEof: { old: boolean; new: boolean } }
-  | { kind: 'binary'; oldSize?: number; newSize?: number }
+  | { kind: 'binary'; oldSize: number | null; newSize: number | null }
   | { kind: 'tooLarge'; additions: number; deletions: number }
   | { kind: 'whitespaceOnly' };
 type Hunk = { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: Line[] };
-type Line = { kind: 'ctx'|'add'|'del'; oldNo?: number; newNo?: number; text: string; words?: [number, number][] };
+type Line = { kind: 'ctx'|'add'|'del'; oldNo: number | null; newNo: number | null; text: string; words: [number, number][] | null };
 ```
 
-Every response that depends on the repository includes the `generation` it was computed for. The frontend discards a response whose `generation` is older than the one it already has.
+Every response that depends on the repository includes the `generation` it was computed for (`ChangeSet.generation`, or `Versioned`). For ref and commit lists it's the generation when the request started. The frontend discards a response whose `generation` is older than the one it already has.
 
 ---
 
@@ -297,7 +308,7 @@ The PRD requires that TurboDiff never modifies the repository (PRD §8, §10). T
 - `gix` is built with **default features off**, enabling only what reading needs (`revision`, `status` and what they pull in). Write-capable modules such as checkout (`worktree-mutation`), `merge`, `notes` and `credentials` aren't compiled in.
 - `clippy.toml`, at the workspace root so it applies to every crate, uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes (including `filter::Pipeline::worktree_file_to_object`, which writes a blob as a side effect), config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, so calling one fails the build. A configured path that no longer resolves only makes clippy print a warning ("does not refer to a reachable function"), which `-D warnings` doesn't turn into an error, so CI also fails when that text appears in clippy's output.
 - Status is computed **without refreshing the index on disk.** File timestamp information stays in memory and is never written back.
-- Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5. Our commands are declared in the app manifest (`build.rs`), so each one needs its `allow-*` permission in `capabilities/default.json`, and no core or plugin permissions are granted beyond what the frontend actually uses. The CSP allows only the app's own resources.
+- Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5. Our commands are declared in the app manifest (`build.rs`), so each one needs its `allow-*` permission in `capabilities/default.json`, and no core or plugin permissions are granted beyond what the frontend actually uses: `core:event:allow-listen` and `allow-unlisten` for the events. The store, dialog and window-state plugins are used only from Rust and grant the webview nothing. The CSP allows only the app's own resources.
 
 A `turbodiff-repo` test (`tests/read_only.rs`) runs every repository operation on the fixtures and checks that no file in `.git` or the work tree changed, timestamps included. The running app has no automated before-and-after check, by choice. Before each release, the PRD's read-only criterion is checked manually: run the app against a repository, then compare `git status`, the reflog and the checksum of `.git/index` before and after.
 
@@ -310,7 +321,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 - Opening a comparison sends **counts only**. Diffs are fetched per file, only for files near the viewport.
 - Work runs **off the UI thread:** Tauri's async commands use a blocking thread pool for git work, and highlighting runs in a Web Worker.
 - **Refreshes are cheap:** after a debounced change, only the file list is rebuilt. Diffs of files whose content IDs haven't changed are reused from the cache.
-- Responses that are no longer needed (an older `generation`) are discarded. Long-running commands check a cancellation flag when the comparison changes.
+- Responses that are no longer needed (an older `generation`) are discarded. Listing changed files checks a cancellation flag (`turbodiff_repo::Cancel`) between files, so changing the comparison stops the previous listing (§4.7).
 - **Watch out for:** WebKitGTK on Linux handles very large DOMs less well than Chromium. Row-level virtualisation is what makes this manageable, so performance should be checked on Linux first.
 
 ---

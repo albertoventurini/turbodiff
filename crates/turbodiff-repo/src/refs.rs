@@ -35,7 +35,6 @@ pub struct RefItem {
     pub current: bool,
     /// Seconds since the epoch: the commit time for branches and lightweight
     /// tags, the tagger time for annotated tags.
-    #[specta(type = f64)]
     pub time: i64,
 }
 
@@ -48,7 +47,6 @@ pub struct CommitItem {
     pub subject: String,
     pub author_name: String,
     /// The commit time, in seconds since the epoch.
-    #[specta(type = f64)]
     pub time: i64,
 }
 

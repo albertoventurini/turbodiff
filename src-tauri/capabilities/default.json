@@ -1,7 +1,26 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window may call TurboDiff's own commands and nothing else.",
-  "windows": ["main"],
-  "permissions": ["allow-app-version"]
+  "description": "TurboDiff's windows may call its own commands and listen for its events, and nothing else.",
+  "windows": ["repo-*", "settings"],
+  "permissions": [
+    "allow-app-version",
+    "allow-get-window-state",
+    "allow-open-repo",
+    "allow-show-open-dialog",
+    "allow-list-branches",
+    "allow-list-tags",
+    "allow-list-commits",
+    "allow-search-commits",
+    "allow-resolve-commit-prefix",
+    "allow-set-comparison",
+    "allow-get-file-diff",
+    "allow-get-lines",
+    "allow-get-settings",
+    "allow-set-settings",
+    "allow-list-recent",
+    "allow-remove-recent",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
 }
