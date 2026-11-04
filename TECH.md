@@ -1,0 +1,354 @@
+# TurboDiff — Technical Design
+
+| | |
+|---|---|
+| **Status** | Draft |
+| **Companion to** | [PRD.md](PRD.md) |
+| **Last updated** | 2026-11-04 |
+
+This document explains *how* TurboDiff is built. It covers the stack, the architecture, the data model, the backend and frontend APIs, and the approach to testing and releases. The PRD is the source of truth for *what* the app does. Section references like "PRD §6.3" point there.
+
+---
+
+## 1. Decisions at a glance
+
+| Area | Choice | Why |
+|---|---|---|
+| App shell | **Tauri 2** | Small binaries, low memory use, Rust backend, web UI that makes the GitHub look easy to reproduce. |
+| Frontend | **Svelte 5** (runes) + **TypeScript** | Little boilerplate. Fine-grained reactivity suits a large, frequently refreshed diff list. |
+| Build tooling | **Vite** + **pnpm** | Standard Tauri and Svelte setup. |
+| Git access | **gitoxide (`gix`)** | Pure Rust, no dependency on an installed `git`, structured data, direct access to file contents. |
+| Diff engine | **`imara-diff`** (what gitoxide uses), called directly | Histogram and Myers algorithms. Full control over hunks, context and whitespace handling. |
+| Default algorithm | **Histogram**, with Myers available in Settings | Usually produces more readable diffs. |
+| Diff computation | **In Rust.** The frontend only renders | Fast. Keeps the UI simple. |
+| Syntax highlighting | **Shiki** in a **Web Worker** | Official GitHub Light and Dark themes and VS Code grammars, without blocking the UI. |
+| Colours | **`@primer/primitives`** (GitHub Primer tokens) as CSS custom properties | Matches GitHub exactly. |
+| File watching | **`notify`** + **`notify-debouncer-full`** | Works across platforms, with debouncing built in. |
+| Tests | Rust unit and fixture tests; **Vitest** + Testing Library for Svelte | See §10. |
+| CI / release | **GitHub Actions** + **`tauri-action`** | Lint and tests on Linux and macOS; release builds when a version tag is pushed. |
+| macOS signing | **Deferred** | Unsigned builds until there's an Apple Developer account. |
+
+**Accepted trade-off of using gitoxide.** TurboDiff shows the same files, statuses, renames and changes as `git diff`. Hunk boundaries may occasionally differ, and rename detection may disagree in borderline cases where a file is about 50% similar. Function names after `@@` hunk headers are not shown in v1.
+
+---
+
+## 2. Architecture
+
+```
+┌──────────────────────────── Tauri process ────────────────────────────┐
+│                                                                        │
+│  Rust backend (src-tauri)                 Webview (src)                │
+│  ┌────────────────────────┐   commands    ┌──────────────────────────┐ │
+│  │ commands.rs  (IPC API) │◀─────────────│ api.ts  (typed wrappers)  │ │
+│  ├────────────────────────┤               ├──────────────────────────┤ │
+│  │ repo/   open, refs,    │   events      │ stores  (Svelte runes)   │ │
+│  │         compare,       │─────────────▶│ components:              │ │
+│  │         changes,       │ repo-changed  │  Toolbar, RefPicker,     │ │
+│  │         filediff       │               │  FileTree, DiffList,     │ │
+│  ├────────────────────────┤               │  FileDiff, Settings      │ │
+│  │ watch/  notify +       │               ├──────────────────────────┤ │
+│  │         debouncer      │               │ highlight.worker.ts      │ │
+│  ├────────────────────────┤               │  (Shiki)                 │ │
+│  │ app/    windows, CLI,  │               └──────────────────────────┘ │
+│  │         settings,      │                                            │
+│  │         recent repos   │                                            │
+│  └────────────────────────┘                                            │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+- **One Tauri process, one webview window per repository** (PRD §6.1). Each window has its own repository session in Rust, keyed by window label.
+- **Rust holds the authoritative state:** the open `gix::Repository`, the current comparison, and the cached list of changed files. The frontend asks for data and renders it.
+- **Data loads lazily.** Opening a comparison returns only the **list of changed files** with their counts. The diff for each file is fetched only when it's about to scroll into view (§7.3).
+
+---
+
+## 3. Repository layout
+
+```
+turbodiff/
+├── PRD.md
+├── TECH.md
+├── package.json            # pnpm workspace root (frontend)
+├── vite.config.ts
+├── src/                    # Svelte frontend
+│   ├── main.ts
+│   ├── App.svelte
+│   ├── lib/
+│   │   ├── api.ts          # typed invoke() wrappers + event listeners
+│   │   ├── types.ts        # mirrors Rust DTOs (generated, see §5)
+│   │   ├── stores/         # session, settings, selection (runes)
+│   │   ├── components/     # Toolbar, RefPicker, FileTree, DiffList, …
+│   │   ├── diff/           # row model, split/inline layout, virtual list
+│   │   ├── highlight/      # Shiki worker + client
+│   │   └── theme/          # Primer token mapping, mode switching
+│   └── styles/
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── capabilities/       # Tauri permission sets
+│   └── src/
+│       ├── main.rs
+│       ├── commands.rs     # #[tauri::command] surface
+│       ├── repo/           # gitoxide + imara-diff logic (no Tauri types)
+│       ├── watch/
+│       └── app/            # windows, CLI, settings, recent repos
+├── tests/fixtures/         # scripts that build fixture repositories
+└── .github/workflows/
+```
+
+`repo/` does not depend on Tauri, so it can be tested as an ordinary Rust library.
+
+---
+
+## 4. Backend (Rust)
+
+### 4.1 Opening a repository
+
+- `gix::discover(path)` finds the enclosing repository (PRD §6.1). A bare repository, or a path outside any repository, returns a typed error (`NotARepository`).
+- The repository is opened with default trust settings and is **only ever read** (§8).
+- **Windows:** opening a repository whose work-tree path is already open in a window just focuses that window.
+
+### 4.2 Refs (for the picker)
+
+- **Branches:** local branches, then remote-tracking branches, with the current branch marked. Sorted by most recent commit.
+- **Tags:** sorted newest first, using the tagger date, or the commit date for lightweight tags.
+- **Commits:** a paginated walk from `HEAD`, newest first (`offset`, `limit` = 50). Each entry has the short SHA, subject, author name and commit time. Whether to walk all branches instead is PRD open question 2.
+- **SHA lookup:** if the search text is 4–40 hex characters, `resolve_commit_prefix` looks it up. An ambiguous prefix returns all matching candidates.
+- **Search** for branches and tags runs in the frontend over the loaded lists. Search over commit messages runs in the backend (`search_commits(query, limit)`), stopping after a fixed number of commits.
+
+### 4.3 Comparison model
+
+```rust
+enum Side { WorkTree, Commit(ObjectId) }
+enum Mode { ThreeDot, TwoDot }
+struct Comparison { base: RefSpec, compare: RefSideSpec, mode: Mode, ignore_ws: bool }
+```
+
+The *left* side is always a tree:
+
+| compare | mode | left tree |
+|---|---|---|
+| commit C | TwoDot | tree of base |
+| commit C | ThreeDot | tree of `merge_base(base, C)` |
+| work tree | TwoDot | tree of base |
+| work tree | ThreeDot | tree of `merge_base(base, HEAD)` |
+
+- When there's no merge base (unrelated histories), three-dot falls back to two-dot and the UI shows a notice.
+- When `HEAD` has no commits yet, the left side is the empty tree.
+
+### 4.4 Listing changed files
+
+**Commit vs commit:** gitoxide's tree-to-tree diff with rename tracking switched on (default 50% similarity, as in git). Each change gets a status: `Added`, `Modified`, `Deleted`, `Renamed{from, similarity}`, `TypeChanged`, plus a mode change if there is one.
+
+**Tree vs work tree** (the default view):
+1. Use `gix` status to collect the paths that differ between the tree and the index, and between the index and the work tree. Add **untracked files** from the directory walk, which respects `.gitignore` and `info/exclude`.
+2. For the union of these paths, compare the **left tree's blob** with the **current file on disk** directly. This merges staged and unstaged changes into a single result, which is what `git diff HEAD` does.
+3. Run the rename tracker on the resulting adds and deletes, with untracked files counting as adds.
+
+Work-tree content goes through the same **filters** git would apply (line-ending conversion, `ident`, and other `.gitattributes` filters), using gitoxide's filter pipeline. That way, a file that is only "changed" because of line endings doesn't show up.
+
+**Line counts** (`+N −M`) are computed for every file while building the list, with the active algorithm and whitespace setting, so the sidebar totals are always accurate. Files above the large-file threshold (§4.5) get their counts but not their diff, until the user clicks "Load diff".
+
+### 4.5 Diffing one file
+
+`get_file_diff(path, opts)` returns a `FileDiff`. Steps:
+
+1. **Load both sides:** the tree blob and/or the filtered work-tree content.
+2. **Binary check**, following git's rule (a NUL byte in the first 8,000 bytes) or a `-diff`/`binary` attribute in `.gitattributes`. Binary files return `Binary { old_size, new_size }`.
+3. **Large-file check:** if the file is over 500 KB or has more than 1,000 changed lines (provisional thresholds, PRD open question 1) and `force` isn't set, return `TooLarge { additions, deletions }`.
+4. **Decode** as UTF-8. Content that is not valid UTF-8 is treated as binary (PRD §8).
+5. **Split into lines,** recording any missing final newline on either side.
+6. **Prepare for hide whitespace:** when it's on, lines are compared using a key with all whitespace removed (as `git diff -w` does), while the original text is kept for display.
+7. **Diff** with `imara-diff` (`Histogram` or `Myers`) to get a list of changed line ranges.
+8. **Build hunks** with `context` lines (from Settings), merging hunks whose context overlaps, as git does.
+9. **Word-level ranges:** inside each changed block, delete lines are paired with insert lines in order, the first deletion with the first insertion and so on. Each pair is split into tokens (words, runs of whitespace, punctuation) and diffed with `imara-diff`. The changed character ranges are returned as `[start, end)` UTF-16 offsets, ready to use in JavaScript. Pairs that are too different (less than about 30% in common) get no word-level ranges, as on GitHub.
+
+**Expand context:** the response includes `old_line_count` and `new_line_count`. The frontend requests hidden lines with `get_lines(path, side, start, end)`. The backend keeps the most recently loaded file contents in an LRU cache, so expanding doesn't re-read files.
+
+### 4.6 Watching for changes
+
+- **One watcher per window session,** on the work-tree root (recursive) and on `.git` (only `HEAD`, `index`, `refs/`, `packed-refs`).
+- Events are **filtered** against `.gitignore` before debouncing, so build folders don't trigger refreshes.
+- **Debounce** at about 300 ms (PRD §6.9). After the delay, the backend:
+  - re-resolves the comparison,
+  - rebuilds the file list,
+  - increases a `generation` counter,
+  - emits `repo-changed { generation, files_changed: [...] }`.
+- When compare is a commit (not the work tree), only changes in `.git` trigger a refresh.
+- If a ref can no longer be resolved, the backend emits `comparison-invalid` and the frontend falls back to work tree vs `HEAD` (PRD §6.9).
+
+### 4.7 App services
+
+- **CLI:** `turbodiff [PATH] [--base REF] [--compare REF]`, using `tauri-plugin-cli`. `tauri-plugin-single-instance` sends the arguments of a second launch to the running process, which opens or focuses the right window. The CLI accepts any revision expression and resolves it with gitoxide's `rev_parse`.
+- **Settings:** JSON stored in the platform config directory (`~/.config/turbodiff/` or `~/Library/Application Support/turbodiff/`) through `tauri-plugin-store`. Changes are sent to all windows with a `settings-changed` event.
+- **Recent repositories:** in the same store, at most 10 entries, deduplicated by work-tree path.
+- **Window size, position and sidebar width:** `tauri-plugin-window-state` for the window; the sidebar width is kept in the settings store.
+- **Native menus:** built with Tauri's menu API (File › Open, Open Recent, Close; app menu › Settings, Quit). Shortcuts are limited to PRD §6.10.
+- **Drag and drop:** the window's file-drop event. The first dropped path that is a folder gets opened.
+
+---
+
+## 5. IPC API
+
+All commands are `async` and return `Result<T, AppError>`. `AppError` is a tagged enum (`NotARepository`, `RefNotFound`, `Io`, `Internal`), so the UI can show the matching empty or error state (PRD §7).
+
+| Command | Returns |
+|---|---|
+| `open_repo(path)` | `RepoInfo { root, name, head: HeadInfo }` |
+| `list_branches()` / `list_tags()` | `RefItem[]` |
+| `list_commits(offset, limit)` / `search_commits(query, limit)` | `CommitItem[]` |
+| `resolve_commit_prefix(prefix)` | `CommitItem[]` |
+| `set_comparison(Comparison)` | `ChangeSet { generation, files: FileEntry[], totals }` |
+| `get_file_diff(path, { force })` | `FileDiff` |
+| `get_lines(path, side, start, end)` | `string[]` |
+| `get_settings()` / `set_settings(patch)` | `Settings` |
+| `list_recent()` / `remove_recent(path)` | `RecentRepo[]` |
+
+**Events:** `repo-changed`, `comparison-invalid`, `settings-changed`.
+
+**Shared types** (Rust structs that are serialised to JSON) get TypeScript definitions generated with **`specta`/`tauri-specta`**, so `src/lib/types.ts` never falls out of sync with the Rust code.
+
+```ts
+type FileEntry = {
+  path: string; oldPath?: string; status: 'A'|'M'|'D'|'R'|'T';
+  similarity?: number; additions: number; deletions: number;
+  binary: boolean; modeChange?: [string, string]; submodule?: [string, string];
+};
+type FileDiff =
+  | { kind: 'text'; hunks: Hunk[]; oldLineCount: number; newLineCount: number;
+      noNewlineAtEof: { old: boolean; new: boolean } }
+  | { kind: 'binary'; oldSize?: number; newSize?: number }
+  | { kind: 'tooLarge'; additions: number; deletions: number }
+  | { kind: 'whitespaceOnly' };
+type Hunk = { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: Line[] };
+type Line = { kind: 'ctx'|'add'|'del'; oldNo?: number; newNo?: number; text: string; words?: [number, number][] };
+```
+
+Every response that depends on the repository includes the `generation` it was computed for. The frontend discards a response whose `generation` is older than the one it already has.
+
+---
+
+## 6. Theming
+
+- **Tokens:** the colour values from `@primer/primitives` (light, dark, plus the diff-specific tokens) are compiled at build time into CSS custom properties under `[data-theme="github"][data-mode="light|dark"]`. Components use only these variables, never raw colour values.
+- **A theme** is a named set of tokens plus a Shiki theme name. v1 has one: `github` (`github-light` / `github-dark` in Shiki). Adding a theme means adding one token file and one entry in a list.
+- **Mode:** `System` follows `prefers-color-scheme` and Tauri's window theme-change event, and switches live. `Light` and `Dark` override it. The mode is set on `<html>` before the first paint, so the window never flashes the wrong theme.
+
+---
+
+## 7. Frontend (Svelte)
+
+### 7.1 State
+
+These are Svelte rune stores, one set per window:
+
+- `session`: repository info, the comparison, the `ChangeSet`, `generation`.
+- `view`: selected file, diff style (inline or split), hide-whitespace, collapsed files, expanded context ranges.
+- `settings`: shared with every window through the `settings-changed` event.
+
+### 7.2 Components
+
+`Toolbar` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `FileTree` (tree or flat; compacted single-child folders) · `DiffList` · `FileDiff` · `HunkRows` (inline / split) · `ExpandControl` · `Welcome` · `SettingsWindow` · `EmptyState`.
+
+### 7.3 Rendering large diffs
+
+- **`DiffList` is virtualised** at the level of individual **rows**: file headers, hunk headers, lines and expand controls all go into one flat row list. Rows have fixed heights while wrapping is off. With wrapping on, row heights are measured and cached, starting from an estimate.
+- **Sticky file headers** come from the virtual list: whichever file owns the first visible row has its header pinned at the top.
+- **Diffs load on demand:** a file's diff is fetched when it comes within about two screen-heights of the viewport. Until then it's shown as a placeholder of the estimated height, based on its line counts.
+- **Single-file focus** (PRD §6.6) gives the same component a row list for one file. The scroll position of the all-files view is saved and restored when you go back.
+- **Split view** is built from the same hunks: within each changed block, deletions go to the left column and additions to the right, aligned row by row, with blank filler cells on the shorter side.
+
+### 7.4 Syntax highlighting
+
+- Shiki runs in a **Web Worker** using its JavaScript regex engine, so no WASM is needed. Each language grammar is loaded only when a file in that language first appears.
+- Shiki highlights **complete old and new file contents** when they're available, rather than isolated lines. This keeps multi-line constructs, like block comments and strings, correct. The worker returns tokens for each line, and the row renderer combines them with the word-level ranges.
+- Highlighting is **skipped** for files over the large-file threshold and for unknown languages, which are shown as plain text. If the worker fails, plain text is shown. Highlighting never blocks the first view of a diff.
+- The worker caches tokens per `(blob id or path+generation, theme)`.
+
+---
+
+## 8. Read-only guarantee
+
+The PRD requires that TurboDiff never modifies the repository (PRD §8, §10). This is guaranteed by how the code is built:
+
+- Only `src-tauri/src/repo/` imports `gix`.
+- `clippy.toml` uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. CI runs clippy with warnings treated as errors.
+- Status is computed **without refreshing the index on disk.** File timestamp information stays in memory and is never written back.
+- Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5.
+
+v1 has no automated before-and-after check of `.git`, by choice. Before each release, the PRD's read-only criterion is checked manually: run the app against a repository, then compare `git status`, the reflog and the checksum of `.git/index` before and after.
+
+---
+
+## 9. Performance approach
+
+These are qualitative goals (PRD §8), met by design rather than by benchmark gates:
+
+- Opening a comparison sends **counts only**. Diffs are fetched per file, only for files near the viewport.
+- Work runs **off the UI thread:** Tauri's async commands use a blocking thread pool for git work, and highlighting runs in a Web Worker.
+- **Refreshes are cheap:** after a debounced change, only the file list is rebuilt. Diffs of files whose content IDs haven't changed are reused from the cache.
+- Responses that are no longer needed (an older `generation`) are discarded. Long-running commands check a cancellation flag when the comparison changes.
+- **Watch out for:** WebKitGTK on Linux handles very large DOMs less well than Chromium. Row-level virtualisation is what makes this manageable, so performance should be checked on Linux first.
+
+---
+
+## 10. Testing
+
+### 10.1 Rust: unit and fixture tests (`cargo test`)
+
+- **Unit tests:** hunk building and merging, context handling, whitespace normalisation, word-level tokenising and pairing, binary detection, UTF-16 offset conversion, missing final newline.
+- **Fixture repositories:** shell scripts in `tests/fixtures/` create small repositories with `git` (needed only to *run the tests*, not in the app). Cases covered:
+  - staged, unstaged and untracked changes, and ignored files,
+  - a repository with no commits yet,
+  - renames, with and without content changes, and near the similarity threshold,
+  - binary files, mode changes, submodule updates, deleted files,
+  - line-ending conversion via `.gitattributes`,
+  - three-dot vs two-dot where base has moved on (the `billing.py` example in the PRD),
+  - unrelated histories (no merge base).
+- **Comparison with git:** for each fixture and comparison, TurboDiff's file list is checked against `git diff --name-status -M` and `git diff --numstat --diff-algorithm=histogram`. Paths, statuses, rename pairs and `+/−` counts must match. Hunk boundaries are not compared, as accepted in §1. Known borderline rename cases are marked as allowed differences.
+
+### 10.2 Frontend: component tests (Vitest + `@testing-library/svelte`)
+
+- `FileTree`: compacting single-child folders, switching between tree and flat, selecting and deselecting files.
+- `RefPicker`: switching tabs, filtering, pinned Working tree, SHA lookup results.
+- Building rows for diffs: inline and split alignment, filler cells, word-level ranges, expand controls.
+- Theme and mode switching.
+- `api.ts` is mocked with fixed responses.
+
+### 10.3 Not automated in v1
+
+End-to-end tests of the whole app, the read-only before-and-after check, and performance benchmarks. These are covered by a short **manual pre-release checklist** in `RELEASING.md`.
+
+---
+
+## 11. CI and release
+
+**GitHub Actions**
+
+- **`ci.yml`** runs on every push and PR, on `ubuntu-latest` and `macos-latest`:
+  - `pnpm install --frozen-lockfile`, `pnpm lint` (ESLint, Prettier check, `svelte-check`), `pnpm test`,
+  - `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`,
+  - Linux system packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
+- **`release.yml`** runs when a `v*` tag is pushed and uses `tauri-action` to build:
+  - Linux: **AppImage** and **.deb**,
+  - macOS: a **universal `.dmg`** (Apple Silicon and Intel), **unsigned** for now,
+
+  then uploads them to a draft GitHub Release.
+
+**Versioning:** SemVer. The version is kept the same in `package.json`, `Cargo.toml` and `tauri.conf.json`, and a script updates all three.
+
+**Signing later:** adding macOS signing and notarisation means adding Apple certificates as CI secrets and the matching `tauri-action` settings. No code changes are needed.
+
+---
+
+## 12. Risks and open technical questions
+
+| Risk / question | Mitigation |
+|---|---|
+| gitoxide's status or filter handling misses an unusual repository setup (LFS, textconv, sparse checkout, submodule edge cases) | Fixture tests for the common cases. Show a clear "unsupported" notice instead of a wrong diff. Report problems upstream. |
+| Rename detection differs from git in borderline cases | Accepted (§1). Use the same 50% threshold. |
+| WebKitGTK performance with huge diffs | Row-level virtualisation. Test on Linux first. |
+| Size of Shiki grammars | Load grammars only when needed. Bundle only common languages and fetch the rest on demand from local assets. |
+| Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Unit tests against `git diff -w` outputs. |
+| Commits tab: `HEAD` only vs all branches | PRD open question 2. The API supports both. Default to `HEAD`. |
+| Large-diff thresholds | PRD open question 1. Defined as constants, tuned against real repositories. |

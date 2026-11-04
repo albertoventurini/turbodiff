@@ -201,7 +201,7 @@ The comparison chosen is **not** saved between launches. Each time a repository 
 
 - **Syntax highlighting** chosen by file extension or name, using GitHub's syntax colours for the active mode.
 - **Word-level highlighting:** within a changed line, the specific changed characters or words get a stronger background, as on GitHub.
-- **Hunk headers** (`@@ -a,b +c,d @@` plus the enclosing function or section, when git provides it) styled as on GitHub.
+- **Hunk headers** (`@@ -a,b +c,d @@`) styled as on GitHub. v1 does not show the enclosing function name after the header.
 - **Expand context:** between hunks, and at the start and end of a file, controls reveal hidden unchanged lines: *expand up*, *expand down* (about 20 lines per click) and *expand all* when the gap is small.
 - **"No newline at end of file"** markers are shown.
 - Long lines **soft-wrap** or scroll horizontally, depending on the setting.
@@ -236,6 +236,7 @@ A **Settings** window, opened from the app menu. Changes apply immediately to al
 | **Tab width** | 2 · 4 · 8 | 4 |
 | **Line wrapping** | On · Off | Off |
 | **Context lines** | 0–20 | 3 |
+| **Diff algorithm** | Histogram · Myers | Histogram |
 
 - **System** appearance follows the OS light or dark preference live, without a restart.
 - A **Reset to defaults** button restores every setting.
@@ -288,8 +289,8 @@ It does **not** remember the last comparison per repository, the open repositori
 | **Open repo** | For a typical change set, the diff appears as soon as the repository opens, with no loading screen to sit through. |
 | **Large change sets** | Very large diffs (thousands of files, tens of thousands of changed lines) don't freeze the app. Scrolling stays smooth and the UI keeps responding while content loads. |
 | **Refresh** | After a file is saved, the change shows up in the app before you've switched back to the window. |
-| **Safety** | Never writes to the repository: no git command that changes the index, refs, working tree or config. Read-only commands must not take index locks (for example use `--no-optional-locks`). |
-| **Dependencies** | Requires `git` (2.30+) on `PATH`. If git is missing, a clear message explains this. |
+| **Safety** | Never writes to the repository: nothing that changes the index, refs, working tree or config, and no lock files. |
+| **Dependencies** | Self-contained. Does not require `git` to be installed. |
 | **Encoding** | UTF-8 by default. Files that cannot be decoded are shown as binary. |
 | **Distribution** | Linux: AppImage and/or .deb. macOS: signed `.app` in a `.dmg` (Apple Silicon and Intel). The CLI launcher `turbodiff` is installable on `PATH`. |
 
@@ -305,19 +306,20 @@ It does **not** remember the last comparison per repository, the open repositori
 
 ## 10. Success criteria
 
-- The default view matches the output of `git diff HEAD` plus untracked files, for the same repository state.
-- Ref-to-ref comparisons match `git diff A...B` (three-dot) and `git diff A B` (two-dot).
+- The default view shows the same files, statuses (including renames) and changes as `git diff HEAD` plus untracked files, for the same repository state.
+- Ref-to-ref comparisons show the same files and changes as `git diff A...B` (three-dot) and `git diff A B` (two-dot).
+- Hunk boundaries may occasionally differ slightly from `git diff`, because TurboDiff uses its own diff engine (see TECH.md).
 - Visual review: someone familiar with GitHub recognises the diff layout at once and finds it as easy to read.
 - The app never changes the repository (checked by running it against a repo and confirming `git status` and the reflog are unchanged).
 - The app feels fast in everyday use on a mid-range laptop, as described in §8.
 
 ## 11. Open questions
 
-1. **Tech stack:** Tauri (Rust + web UI), Electron, or native (e.g. GTK/SwiftUI)? A web-based UI makes the GitHub look easiest to reproduce. Tauri keeps the app small and fast. To decide in the technical design.
-2. **Git access:** shell out to the `git` CLI (exact parity with `git diff`) or use a library (libgit2 / gitoxide)? Shelling out is simplest for parity.
-3. **Large-diff thresholds:** confirm the exact line and size limits after testing on real repositories.
-4. **Commits tab in the ref picker:** list commits reachable from `HEAD` only, or from all branches?
-5. **App icon and branding:** to be designed.
+The tech stack and how the app reads git repositories have been decided. See [TECH.md](TECH.md).
+
+1. **Large-diff thresholds:** confirm the exact line and size limits after testing on real repositories.
+2. **Commits tab in the ref picker:** list commits reachable from `HEAD` only, or from all branches?
+3. **App icon and branding:** to be designed.
 
 ## 12. Possible future work (out of scope for v1)
 
@@ -328,4 +330,5 @@ Listed only to show where TurboDiff could go; none of it is committed to.
 - "Viewed" checkboxes per file.
 - Filtering the file tree by name.
 - Richer keyboard navigation (next/previous file and hunk).
+- Function names in hunk headers (`@@ … @@ fn main()`).
 - Windows support.
