@@ -120,8 +120,8 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M8 — Settings window
 
-- [ ] Settings window: appearance, theme, default diff style, font, size, tab width, wrapping, context lines, diff algorithm (PRD §6.8).
-- [ ] Changes apply right away in every window. Add "Reset to defaults".
+- [x] Settings window: appearance, theme, default diff style, font, size, tab width, wrapping, context lines, diff algorithm (PRD §6.8).
+- [x] Changes apply right away in every window. Add "Reset to defaults".
 
 ## M9 — Release
 
