@@ -15,6 +15,21 @@
   let dragWidth = $state<number | null>(null);
   const width = $derived(dragWidth ?? settings.value.sidebarWidth);
 
+  // A file that's no longer in the list can't stay selected.
+  $effect(() => {
+    const files = session.changes?.files;
+    if (view.selected !== null && files && !files.some((file) => file.path === view.selected)) {
+      view.selected = null;
+    }
+  });
+
+  /** `Esc` goes back to all files (PRD §6.10), unless a popup used it to close. */
+  function onkeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && !e.defaultPrevented && view.selected !== null) {
+      view.selected = null;
+    }
+  }
+
   function clamp(value: number): number {
     const max = Math.min(SIDEBAR_WIDTHS.max, window.innerWidth - MAIN_MIN_WIDTH);
     return Math.round(Math.max(SIDEBAR_WIDTHS.min, Math.min(max, value)));
@@ -45,6 +60,8 @@
     divider.addEventListener('pointercancel', end);
   }
 </script>
+
+<svelte:window {onkeydown} />
 
 <div class="repo-view" class:dragging={dragWidth !== null}>
   <Toolbar />

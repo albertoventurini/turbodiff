@@ -3,15 +3,29 @@
 import { SvelteSet } from 'svelte/reactivity';
 import type { DiffStyle } from '../types';
 
+export type FileTreeMode = 'tree' | 'flat';
+
 export class ViewStore {
   sidebarCollapsed = $state(false);
+  /** How the sidebar lists the changed files (PRD §6.5). */
+  fileTreeMode = $state<FileTreeMode>('tree');
   /** The file shown on its own (PRD §6.6), or `null` for all files. */
   selected = $state<string | null>(null);
+  /**
+   * The file at the top of the main pane in the all-files view, which the
+   * sidebar marks as current. The diff list (M5) keeps it up to date.
+   */
+  current = $state<string | null>(null);
   diffStyle = $state<DiffStyle>('inline');
   /** Paths of the files collapsed in the diff list. */
   collapsed = new SvelteSet<string>();
 
   constructor(diffStyle: DiffStyle) {
     this.diffStyle = diffStyle;
+  }
+
+  /** Selects a file, or goes back to all files when it's already selected. */
+  toggleSelected(path: string): void {
+    this.selected = this.selected === path ? null : path;
   }
 }

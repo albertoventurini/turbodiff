@@ -6,7 +6,7 @@
   import EmptyState from './EmptyState.svelte';
   import Notice from './Notice.svelte';
 
-  const { session } = getStores();
+  const { session, view } = getStores();
 
   const base = $derived(refLabel(session.comparison.base));
   const compare = $derived(compareLabel(session.comparison.compare));
@@ -59,9 +59,17 @@
         {/if}
       </EmptyState>
     {:else}
-      <!-- The diff view comes in M5 (PRD §6.6). -->
+      <!--
+        The diff view comes in M5 (PRD §6.6). It shows only `view.selected` when
+        a file is selected, and otherwise all files, keeping `view.current` set
+        to the file at the top of the pane.
+      -->
       <div class="placeholder" data-testid="diff-placeholder">
-        {session.changes.totals.files} changed files
+        {#if view.selected}
+          {view.selected}
+        {:else}
+          {session.changes.totals.files} changed files
+        {/if}
       </div>
     {/if}
   {:else if session.loading}
