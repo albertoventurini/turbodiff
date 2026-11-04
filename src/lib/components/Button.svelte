@@ -97,4 +97,8 @@
   .invisible:active:not(:disabled) {
     background: var(--button-invisible-bgColor-active);
   }
+  .invisible:disabled,
+  .invisible:disabled :global(.icon) {
+    color: var(--fgColor-disabled);
+  }
 </style>

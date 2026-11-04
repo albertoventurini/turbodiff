@@ -121,7 +121,7 @@ Repository access is a separate library crate, `turbodiff-repo`, in a Cargo work
 
 - **Branches:** the current branch first, then local branches, then remote-tracking branches, each group sorted by most recent commit. Symbolic refs such as `origin/HEAD` are left out. Each `RefItem` has the short and full name, the peeled commit and a time.
 - **Tags:** sorted newest first, using the tagger date, or the commit date for lightweight tags (git's `creatordate`). Tags that don't point to a commit are left out.
-- **Commits:** a paginated walk from `HEAD` by commit time, newest first (`offset`, `limit` = 50), as `git log` orders them. Each entry has the full and short SHA (7 characters), subject, author name and commit time. Whether to walk all branches instead is PRD open question 2.
+- **Commits:** a paginated walk from `HEAD` by commit time, newest first (`offset`, `limit` = 50), as `git log` orders them. Each entry has the full and short SHA (7 characters), subject, author name and commit time. Only `HEAD` is walked, not every branch (PRD open question 2, settled in M4): it's what `git log` shows, and a commit on another branch can be picked through that branch or by pasting its SHA.
 - **SHA lookup:** if the search text is 4–40 hex characters (either case), `resolve_commit_prefix` looks it up in the object database. An ambiguous prefix returns all matching commits, newest first. Other text returns nothing.
 - **Search** for branches and tags runs in the frontend over the loaded lists. Search over commit messages runs in the backend (`search_commits(query, limit)`), matching the whole message without regard to case, and stopping after `SEARCH_COMMITS_SCAN_LIMIT` (10,000) commits.
 - Times are seconds since the epoch. They're `i64` in Rust and exported to TypeScript as `number`.
@@ -279,7 +279,7 @@ Every response that depends on the repository includes the `generation` it was c
 These are Svelte rune stores, one set per window:
 
 - `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, and a notice for failures that leave the window as it was (`open-failed`). Hide whitespace lives here, as part of the `Comparison`.
-- `view`: selected file, diff style (inline or split), collapsed files, whether the sidebar is collapsed, and from M5 expanded context ranges.
+- `view`: selected file, the file at the top of the all-files view (`current`, which the sidebar marks; M5's diff list sets it), tree or flat file list, diff style (inline or split), collapsed files, whether the sidebar is collapsed, and from M5 expanded context ranges. The tree or flat choice isn't saved (PRD §6.11).
 - `settings`: shared with every window through the `settings-changed` event.
 - `recent`: the recent repositories for the welcome screen, following `recent-changed`.
 
@@ -289,7 +289,11 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 
 ### 7.2 Components
 
-`Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `FileTree` (tree or flat; compacted single-child folders) · `DiffList` · `FileDiff` · `HunkRows` (inline / split) · `ExpandControl` · `Welcome` · `SettingsWindow` · `EmptyState`.
+`Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `SegmentedControl` · `Sidebar` (summary line, tree / flat toggle) · `FileTree` (tree or flat; compacted single-child folders) · `DiffList` · `FileDiff` · `HunkRows` (inline / split) · `ExpandControl` · `Welcome` · `SettingsWindow` · `EmptyState`.
+
+**Sidebar** (PRD §6.5). The tree lists folders before files, each in path order (numbers in natural order, case ignored), as GitHub does; the flat list is in path order. `orderedFiles` in `src/lib/fileTree.ts` gives the same order, for the diff list to follow (PRD §6.6). A renamed file sits at its new path, with the old one in its tooltip. Clicking a file sets `view.selected`, and clicking it again or pressing `Esc` clears it. A selected file that leaves the list is deselected. Folders the user collapsed stay collapsed while the list refreshes. The tree isn't virtualised: it's one small row per file, unlike the diff list.
+
+**Ref picker** (PRD §6.3). Each opening reloads the branch and tag lists, so they're never stale, and keeps the previous ones until the new ones arrive, which lets the picker open on the right tab at once. For a ref from the command line, which may be a short name or a revision such as `main~3`, the tab is found from the loaded lists: a tag wins over a branch of the same name, as in git, and anything else is a commit. The Commits tab loads 50 commits at a time, and the next page when the list is scrolled to within 200 px of its end. Typing searches the backend after a 150 ms pause: commit messages on the Commits tab, and, when the text looks like a SHA, `resolve_commit_prefix` on every tab, so a pasted SHA is offered under "Commits with this SHA" even on Branches or Tags. `Esc` closes the picker without also deselecting a file. The swap button is disabled while compare is the working tree, which can't be a base. The three-dot / two-dot toggle explains itself in a native tooltip.
 
 ### 7.3 Rendering large diffs
 
@@ -395,5 +399,4 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 | WebKitGTK performance with huge diffs | Row-level virtualisation. Test on Linux first. |
 | Size of Shiki grammars | Load grammars only when needed. Bundle only common languages and fetch the rest on demand from local assets. |
 | Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Counts are compared with `git diff -w --numstat` on a fixture. |
-| Commits tab: `HEAD` only vs all branches | PRD open question 2. The API supports both. Default to `HEAD`. |
 | Large-diff thresholds | PRD open question 1. Defined as constants, tuned against real repositories. |

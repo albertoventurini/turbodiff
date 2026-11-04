@@ -1,10 +1,36 @@
 <script lang="ts">
-  import { compareLabel, refLabel } from '../refs';
   import { getStores } from '../stores/context';
+  import type { CompareSide, Mode } from '../types';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
+  import ModeToggle from './ModeToggle.svelte';
+  import RefPicker from './RefPicker.svelte';
 
   const { session, view } = getStores();
+
+  const comparison = $derived(session.comparison);
+  const canSwap = $derived(comparison.compare.kind === 'commit');
+
+  function setBase(side: CompareSide) {
+    if (side.kind === 'commit') void session.compare({ ...comparison, base: side.spec });
+  }
+
+  function setCompare(compare: CompareSide) {
+    void session.compare({ ...comparison, compare });
+  }
+
+  function setMode(mode: Mode) {
+    void session.compare({ ...comparison, mode });
+  }
+
+  function swap() {
+    if (comparison.compare.kind !== 'commit') return;
+    void session.compare({
+      ...comparison,
+      base: comparison.compare.spec,
+      compare: { kind: 'commit', spec: comparison.base },
+    });
+  }
 </script>
 
 <header class="toolbar">
@@ -25,14 +51,23 @@
     <span>{session.repo?.name}</span>
   </h1>
 
-  <!-- The ref pickers and the mode toggle come in M4 (PRD §6.3). -->
   <div class="comparison" data-testid="comparison-bar">
-    <span class="ref"><span class="muted">base:</span> {refLabel(session.comparison.base)}</span>
-    <Icon name="arrow-left" />
-    <span class="ref">
-      <span class="muted">compare:</span>
-      {compareLabel(session.comparison.compare)}
-    </span>
+    <RefPicker side="base" value={{ kind: 'commit', spec: comparison.base }} onselect={setBase} />
+    <span class="arrow"><Icon name="arrow-left" /></span>
+    <RefPicker side="compare" value={comparison.compare} onselect={setCompare} />
+    <Button
+      variant="invisible"
+      size="small"
+      aria-label="Swap base and compare"
+      title={canSwap
+        ? 'Swap base and compare'
+        : "The working tree can't be the base, so it can't be swapped"}
+      disabled={!canSwap}
+      onclick={swap}
+    >
+      <Icon name="arrow-switch" />
+    </Button>
+    <ModeToggle value={comparison.mode} onchange={setMode} />
   </div>
 
   <!-- The diff style and hide whitespace toggles come in M5 (PRD §6.6, §6.7). -->
@@ -78,18 +113,9 @@
     color: var(--fgColor-muted);
   }
 
-  .ref {
-    padding: var(--base-size-2) var(--base-size-8);
-    border: var(--borderWidth-thin) solid var(--borderColor-default);
-    border-radius: var(--borderRadius-medium);
-    background: var(--bgColor-default);
-    color: var(--fgColor-default);
-    font-size: var(--text-body-size-small);
-    white-space: nowrap;
-  }
-
-  .muted {
-    color: var(--fgColor-muted);
+  .arrow {
+    display: flex;
+    flex: none;
   }
 
   .end {

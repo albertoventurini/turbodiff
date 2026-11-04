@@ -318,7 +318,7 @@ It does **not** remember the last comparison per repository, the open repositori
 The tech stack and how the app reads git repositories have been decided. See [TECH.md](TECH.md).
 
 1. **Large-diff thresholds:** confirm the exact line and size limits after testing on real repositories.
-2. **Commits tab in the ref picker:** list commits reachable from `HEAD` only, or from all branches?
+2. ~~**Commits tab in the ref picker:** list commits reachable from `HEAD` only, or from all branches?~~ Settled: `HEAD` only, as `git log` lists them. A commit on another branch is picked through that branch, or found by pasting its SHA.
 3. **App icon and branding:** to be designed.
 
 ## 12. Possible future work (out of scope for v1)

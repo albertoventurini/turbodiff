@@ -77,17 +77,17 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M4 — Sidebar and ref picker
 
-- [ ] Summary line: number of files, total additions and deletions.
-- [ ] `FileTree`: tree view with compacted single-child folders, flat view, a toggle between them, status badges, `+/−` counts (PRD §6.5).
-- [ ] File selection and deselection, including `Esc`, and a "current file" marker in the all-files view.
-- [ ] `RefPicker` (PRD §6.3):
+- [x] Summary line: number of files, total additions and deletions.
+- [x] `FileTree`: tree view with compacted single-child folders, flat view, a toggle between them, status badges, `+/−` counts (PRD §6.5).
+- [x] File selection and deselection, including `Esc`, and a "current file" marker in the all-files view.
+- [x] `RefPicker` (PRD §6.3):
   - search box, with Working tree pinned in the compare picker,
   - tabs Branches | Tags | Commits,
   - commits load more as you scroll,
   - pasting a SHA finds the commit,
   - opens on the tab of the current selection.
-- [ ] Swap button and the three-dot / two-dot toggle, with its explanatory tooltip.
-- [ ] Component tests for `FileTree` and `RefPicker`.
+- [x] Swap button and the three-dot / two-dot toggle, with its explanatory tooltip.
+- [x] Component tests for `FileTree` and `RefPicker`.
 
 ## M5 — Diff view
 
@@ -138,4 +138,4 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 ## Open questions to settle along the way
 
 - Large-diff thresholds (PRD §11.1): tune during M5 using real repositories.
-- Commits tab, `HEAD` only or all branches (PRD §11.2): decide during M4. The default is `HEAD`.
+- ~~Commits tab, `HEAD` only or all branches (PRD §11.2): decide during M4.~~ Settled in M4: `HEAD` only.
