@@ -1,10 +1,11 @@
 <script lang="ts">
   import { getStores } from '../stores/context';
-  import type { CompareSide, Mode } from '../types';
+  import type { CompareSide, DiffStyle, Mode } from '../types';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import ModeToggle from './ModeToggle.svelte';
   import RefPicker from './RefPicker.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
 
   const { session, view } = getStores();
 
@@ -21,6 +22,15 @@
 
   function setMode(mode: Mode) {
     void session.compare({ ...comparison, mode });
+  }
+
+  const STYLES: { value: DiffStyle; label: string }[] = [
+    { value: 'inline', label: 'Inline' },
+    { value: 'split', label: 'Split' },
+  ];
+
+  function toggleWhitespace() {
+    void session.compare({ ...comparison, ignoreWhitespace: !comparison.ignoreWhitespace });
   }
 
   function swap() {
@@ -70,8 +80,18 @@
     <ModeToggle value={comparison.mode} onchange={setMode} />
   </div>
 
-  <!-- The diff style and hide whitespace toggles come in M5 (PRD §6.6, §6.7). -->
-  <div class="end"></div>
+  <div class="end">
+    <SegmentedControl options={STYLES} bind:value={view.diffStyle} label="Diff style" />
+    <Button
+      size="small"
+      aria-pressed={comparison.ignoreWhitespace}
+      title="Treat lines that differ only in whitespace as unchanged"
+      onclick={toggleWhitespace}
+    >
+      {#if comparison.ignoreWhitespace}<Icon name="check" />{/if}
+      Hide whitespace
+    </Button>
+  </div>
 </header>
 
 <style>
@@ -119,6 +139,10 @@
   }
 
   .end {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--base-size-8);
     margin-left: auto;
   }
 </style>
