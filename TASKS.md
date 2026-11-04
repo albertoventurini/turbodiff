@@ -125,17 +125,17 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M9 — Release
 
-- [ ] Accessibility pass: status shown by letters and markers as well as colour, AA contrast in both modes, respect for OS font scaling and reduced motion (PRD §7).
-- [ ] Performance pass on a large repository, on Linux (WebKitGTK) first, then macOS (TECH §9).
-- [ ] App icon and branding.
-- [ ] `release.yml`: `tauri-action` builds the AppImage, .deb and an unsigned universal .dmg, and uploads them to a draft release (TECH §11).
-- [ ] A script that updates the version in `package.json`, `Cargo.toml` and `tauri.conf.json` together.
-- [ ] `RELEASING.md`: the manual pre-release checklist (read-only check, performance check, installing and launching each build).
+- [x] Accessibility pass: status shown by letters and markers as well as colour, AA contrast in both modes, respect for OS font scaling and reduced motion (PRD §7).
+- [x] Performance pass on a large repository, on Linux (WebKitGTK) first, then macOS (TECH §9). Linux done in M9; macOS is a manual step in `RELEASING.md`.
+- [x] App icon and branding.
+- [x] `release.yml`: `tauri-action` builds the AppImage, .deb and an unsigned universal .dmg, and uploads them to a draft release (TECH §11).
+- [x] A script that updates the version in `package.json`, `Cargo.toml` and `tauri.conf.json` together.
+- [x] `RELEASING.md`: the manual pre-release checklist (read-only check, performance check, installing and launching each build).
 - [ ] Release v0.1.0.
 
 ---
 
 ## Open questions to settle along the way
 
-- Large-diff thresholds (PRD §11.1): checked in M5 on this repository and left as they are; revisit in the M9 performance pass.
+- ~~Large-diff thresholds (PRD §11.1): checked in M5 on this repository and left as they are; revisit in the M9 performance pass.~~ Checked again in M9 on a large generated repository and left as they are.
 - ~~Commits tab, `HEAD` only or all branches (PRD §11.2): decide during M4.~~ Settled in M4: `HEAD` only.

@@ -180,7 +180,7 @@ Similarity is git's estimate: content is cut into spans at each newline or every
 4. **Decode** as UTF-8. Content that is not valid UTF-8 is treated as binary (PRD §8).
 5. **Split into lines,** recording any missing final newline on either side.
 6. **Prepare for hide whitespace:** when it's on, lines are compared using a key with all whitespace removed (as `git diff -w` does), while the original text is kept for display.
-7. **Diff** with `imara-diff` (`Histogram` or `Myers`) to get a list of changed line ranges.
+7. **Diff** with `imara-diff` (`Histogram` or `Myers`) to get a list of changed line ranges. Above 20,000 lines, both sides together (`HISTOGRAM_MAX_LINES`), Myers is used whatever the setting. imara-diff's Histogram is quadratic at worst: in the M9 performance pass, a 100,000-line lock file with every other line changed took 9 s to count (Myers: 2 ms), and held up the whole file list. git's own histogram falls back to Myers in a similar way. The same applies to the file list's `+/−` counts.
 8. **Build hunks** with `context` lines (from Settings), merging hunks whose context would touch or overlap (at most 2 × `context` unchanged lines between changes), as git does. As in git's headers, a side with no lines starts at the line before the change (`@@ -0,0 +1,3 @@`). `Line.text` has no `\n`. With hide whitespace on, unchanged lines show the new text. If nothing is left of the diff but the text differs, the result is `WhitespaceOnly`.
 9. **Word-level ranges:** inside each changed block, delete lines are paired with insert lines in order, the first deletion with the first insertion and so on. Each pair is split into tokens (words, runs of whitespace, punctuation) and diffed with `imara-diff`. The changed character ranges are returned as `[start, end)` UTF-16 offsets, ready to use in JavaScript. Pairs that are too different (less than 30% of their bytes in common) get no word-level ranges, as on GitHub. Words are runs of letters, digits and `_`. Every other non-space character is its own token. With hide whitespace on, whitespace tokens compare equal and are never marked.
 
@@ -271,6 +271,7 @@ Every response that depends on the repository includes the `generation` it was c
 
 - **Tokens:** `scripts/build-tokens.js` (`pnpm build:tokens`) reads the resolved colour values from `@primer/primitives` (`dist/docs/functional/themes/light.json` and `dark.json`, which include the diff-specific `diffBlob-*` tokens) and writes them as CSS custom properties to `src/styles/themes.css`, one block per `[data-theme="github"][data-mode="light|dark"]`, sorted by name, with `color-scheme` set for the mode. **The output is committed**, not built on install or dev: it only changes when the package does, so a Primer upgrade shows up as a reviewable diff, and the app, lint and tests don't need an extra build step. A Vitest test fails when the committed file doesn't match what the script generates from the installed package. Mode-independent Primer tokens (sizes, spacing, radii, typography) are `:root` stylesheets that `src/styles/global.css` imports from the package directly.
 - **Components use only these variables,** never raw colour values. A Vitest test checks that no `.svelte` or `.css` file outside `themes.css` contains a colour literal, and that every `var(--…)` they use is defined.
+- **Contrast** (PRD §7): `src/lib/contrast.test.ts` checks WCAG AA (4.5:1) in both modes for every text colour the UI puts on a background: body and muted text, counts, status badges, notices, line numbers, hunk headers, added, deleted and word-highlighted lines, find matches and controls. Many dark-mode tokens are translucent, so each background is composited over the ones beneath it, down to `bgColor-default`. Syntax highlighting colours aren't checked; they're GitHub's own pairings with these backgrounds.
 - **A theme** is a named set of tokens plus a Shiki theme name. v1 has one: `github` (`github-light` / `github-dark` in Shiki). Adding a theme means adding one entry to `THEMES` in `scripts/build-tokens.js` and one in `src/lib/theme/theme.svelte.ts`.
 - **Mode:** `System` follows `prefers-color-scheme` and Tauri's window theme-change event (whichever reports a change), and switches live. `Light` and `Dark` override it. On Linux, tao reads the colour scheme from the XDG desktop portal and sets GTK's dark preference, which WebKitGTK's `prefers-color-scheme` follows.
 - **No flash at startup:** every window is created from Rust with an initialization script (`src-tauri/src/app/boot.js`, filled in by `app/boot.rs`) that carries the current settings. It runs before the page's own scripts and sets `data-theme` and `data-mode` on `<html>`, and leaves the settings in `window.__TURBODIFF_SETTINGS__` so the settings store starts from them (the sidebar width is right on the first render, too). `index.html` links `global.css` as a blocking stylesheet, so the first paint already has the tokens, in dev as well. After that, the frontend keeps the attributes in step with the settings and the OS. Neither needs a window or plugin permission: the theme event only needs `core:event:allow-listen`.
@@ -285,7 +286,7 @@ Every response that depends on the repository includes the `generation` it was c
 These are Svelte rune stores, one set per window:
 
 - `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, a notice for failures that leave the window as it was (`open-failed`), and `fallback`, the ref that disappeared after `comparison-invalid`. A `repo-changed` that arrives while a `set_comparison` is pending replaced that listing in the backend, so it counts as its result. Hide whitespace lives here, as part of the `Comparison`.
-- `view`: selected file, the file at the top of the all-files view (`current`, which the sidebar marks; M5's diff list sets it), tree or flat file list, diff style (inline or split), collapsed files and whether the sidebar is collapsed. The diff style starts at the default from Settings, and every window switches to a new default when it changes (PRD §6.8); other settings changes leave the toolbar's choice alone. The tree or flat choice isn't saved (PRD §6.11).
+- `view`: selected file, the file at the top of the all-files view (`current`, which the sidebar marks; M5's diff list sets it), tree or flat file list, diff style (inline or split), collapsed files, whether the sidebar is collapsed and whether the find bar is open (§7.5). The diff style starts at the default from Settings, and every window switches to a new default when it changes (PRD §6.8); other settings changes leave the toolbar's choice alone. The tree or flat choice isn't saved (PRD §6.11).
 - `diffs` (`DiffStore`, owned by `DiffList` rather than shared through context): each file's loaded diff and the unchanged lines revealed by expanding context, keyed by path. It's emptied when a new list replaces the old one (`session.listing`: a `set_comparison` result) or the context-lines or algorithm settings change, since every diff depends on them. A refresh (`session.refresh`, from `repo-changed`) only touches what changed (§7.3).
 - `highlights` (`HighlightStore`, also owned by `DiffList`): syntax highlighting tokens by path and Shiki theme (§7.4), emptied when `session.listing` changes.
 - `system` (`SystemMode`): whether the OS is in dark mode, shared through context so `DiffList` can pick the Shiki theme for the current mode.
@@ -298,7 +299,7 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 
 ### 7.2 Components
 
-`Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `SegmentedControl` · `Sidebar` (summary line, tree / flat toggle) · `FileTree` (tree or flat; compacted single-child folders) · `StatusBadge` · `DiffList` (virtual list, sticky header, horizontal scrolling) · `DiffRow` (one row of any kind, inline or split) · `FileHeader` · `Welcome` · `SettingsWindow` · `EmptyState`.
+`Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `SegmentedControl` · `Sidebar` (summary line, tree / flat toggle) · `FileTree` (tree or flat; compacted single-child folders) · `StatusBadge` · `DiffList` (virtual list, sticky header, horizontal scrolling) · `FindBar` · `DiffRow` (one row of any kind, inline or split) · `FileHeader` · `Welcome` · `SettingsWindow` · `EmptyState`.
 
 **Sidebar** (PRD §6.5). The tree lists folders before files, each in path order (numbers in natural order, case ignored), as GitHub does; the flat list is in path order. `orderedFiles` in `src/lib/fileTree.ts` gives the same order, for the diff list to follow (PRD §6.6). A renamed file sits at its new path, with the old one in its tooltip. Clicking a file sets `view.selected`, and clicking it again or pressing `Esc` clears it. A selected file that leaves the list is deselected, and a collapsed one is forgotten. Folders the user collapsed stay collapsed while the list refreshes. The tree isn't virtualised: it's one small row per file, unlike the diff list.
 
@@ -313,6 +314,8 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 - **Copying:** line numbers and `+`/`−` markers are CSS generated content (`attr()`), and headers, hunk rows and messages aren't selectable, so a copy holds only code. In split view, a selection stays on the side where it started.
 - **Horizontal scrolling,** while wrapping is off: every line shares one offset, applied as a transform inside a clipping box, so file headers, line numbers and markers stay in place, and both split columns move together. The offset comes from a scrollbar under the list (with a track tall enough for overlay scrollbars) and from sideways or Shift wheel scrolling. Its range is the longest line among the loaded diffs, estimated in characters and corrected by the rendered lines' measured widths.
 - **Sizes:** the line height is the font size × 20/13 (20 px at 13 px, as on GitHub). Line-number gutters are as wide as the largest line number among the loaded diffs.
+- **Reduced motion:** nothing in the UI moves: scrolling is never animated and there are no transitions. The only animations are the delayed "Loading…" texts, which appear at once rather than fade, and `global.css` turns animations off altogether under `prefers-reduced-motion`.
+- **OS font scaling:** fixed row heights are in CSS px, while the UI text is in rem. GTK's text scaling (`text-scaling-factor`, or `GDK_DPI_SCALE` for one process) scales CSS px and rem alike in WebKitGTK, so rows keep fitting their content; checked at 1.5× in M9. On macOS, display scaling is uniform in the same way.
 
 ### 7.3 Rendering large diffs
 
@@ -332,6 +335,16 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 - The worker returns each line as `[end, style]` runs with a per-file table of inline styles (colour, italic, bold). Runs in the theme's default foreground get no style, so the diff's own Primer colours apply to them. `spans` in `diffRows.ts` combines the runs with the word-level ranges; highlighting that runs past the end of a line is dropped for that line. Syntax colours come from Shiki's GitHub themes as data and are applied as inline styles, so no colour literals appear in the source.
 - Highlighting is **skipped** for files with more than `LARGE_DIFF_LINES` changed lines, for a side longer than `LARGE_FILE_BYTES` (500,000 UTF-16 units, which also catches files shown with "Load diff"), and for unknown languages. Lines over 1,000 characters stay plain, and Shiki gives up on a line after 500 ms. If the worker can't start or fails, it's stopped and everything is plain text from then on; a file that fails to highlight on its own stays plain. Rows render plain text first and pick up colours when they arrive, without changing height, so highlighting never blocks the first view of a diff.
 - **Cache:** `HighlightStore` (`src/lib/stores/highlights.svelte.ts`, owned by `DiffList` beside `DiffStore`) keeps tokens by path and Shiki theme, and is cleared whenever a new list replaces the old one. A file whose diff changed in a refresh drops its tokens when the new diff arrives, and is highlighted again. Switching between light and dark keeps both, so switching back is instant. Files are highlighted when their diff is loaded and they're within the load-ahead window (§7.3).
+
+### 7.5 Find in page
+
+Neither WebKitGTK nor WKWebView has a find bar of its own, and the webview could only search the rows the virtual list has rendered anyway, so `Mod+F` (PRD §6.10) opens TurboDiff's own find bar (`FindBar.svelte`, inside `DiffList`):
+
+- **What's searched:** the text of the lines in the row list (`findMatches` in `src/lib/find.ts`): case-insensitive, non-overlapping, in row order, the left side of a split row before the right. File paths, hunk headers, messages and the bodies of collapsed files aren't searched, since they aren't lines of the diff. Searching text isn't diffing, so it doesn't break "Rust computes, Svelte renders".
+- **Loading:** while there's a query, `DiffStore.loadAll` loads the diffs of every searched file, four at a time. The count shows `+` until they've all arrived. Files over the large-diff thresholds aren't searched until "Load diff" is clicked, the same as what the page shows.
+- **Current match:** a new query takes the first match at or below the top of the viewport, and keeps following it as more diffs load, until the user steps with Enter, Shift+Enter or the arrow buttons. Stepping scrolls the match into view, a third of the way down, and scrolls sideways when lines don't wrap.
+- **Marks:** `spans()` cuts each line at match boundaries as well as word ranges and highlighting tokens, and the row wraps matches in `<mark>`: outlined attention-muted for every match, solid attention-emphasis for the current one.
+- `Esc` in the find bar closes it (and doesn't go back to all files). The query is kept for the next `Mod+F`, which selects it.
 
 ---
 
@@ -360,6 +373,12 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 - Responses that are no longer needed (an older `generation`) are discarded. Listing changed files checks a cancellation flag (`turbodiff_repo::Cancel`) between files, so changing the comparison stops the previous listing (§4.7).
 - **Watch out for:** WebKitGTK on Linux handles very large DOMs less well than Chromium. Row-level virtualisation is what makes this manageable, so performance should be checked on Linux first.
 
+**M9 performance pass** (Linux, WebKitGTK, release build), on `scripts/make-large-repo.sh`: 3,271 changed files, about 320,000 changed lines and a 100,000-line lock file, against `HEAD`.
+
+- The window appears in 0.3 s. The file list first took 10–20 s, almost all of it counting the lock file with Histogram; with Myers above 20,000 lines (§4.5) the backend lists it in 0.5 s and the diff shows 2–4 s after launch. The rest is mostly the sidebar's file tree, which isn't virtualised (§7.2); fine at this size, and the first thing to look at if a bigger change set is slow. For comparison, `git diff HEAD -M --shortstat` takes 0.3 s.
+- Find in page over every file (a word that matches 500,000 times) first applied each loaded diff on its own, and each rebuilt the row list (300 ms with everything loaded). Applying them in batches (§7.5) brings it to under 15 s for all 3,271 files, with the window drawing in between.
+- Not checked here: scrolling smoothness, which needs a person at the window, and macOS. Both are in `RELEASING.md`.
+
 ---
 
 ## 10. Testing
@@ -386,6 +405,8 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 - Syntax highlighting: picking languages, tokenizing with the real Shiki (multi-line comments, both themes, long lines), combining tokens with word-level ranges, the highlight store (which sides it fetches, what it skips, stale generations, the cache) and the worker client's failure handling. The worker itself isn't started in tests: jsdom has none, and the diff list tests replace the client.
 - The Settings window: showing the saved values, saving each change, clamping numbers, a saved font that isn't installed, a font list that fails to load, and resetting. Open windows taking up a new default diff style (and keeping the toolbar's choice otherwise), and listing files again when the algorithm changes.
 - Theme and mode switching, the session, settings and recent stores (including discarding stale generations), the welcome screen, the layout and the empty and error states.
+- Find in page: finding matches in inline and split rows (and not in paths, hunk headers or collapsed files), marking them in `spans()`, `Mod+F`, stepping with Enter and Shift+Enter, loading every diff to search it, and closing with `Esc`.
+- Contrast of every text and background pair in both modes (§6), and the version script's file rewrites (`scripts/set-version.test.ts`).
 - `api.ts` is mocked with fixed responses.
 
 ### 10.3 Not automated in v1
@@ -404,12 +425,14 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
   - `cargo fmt --check`, `cargo clippy -D warnings` (plus the stale-path check in §8), `cargo test`, for the whole Cargo workspace from the repository root,
   - Linux system packages: `libwebkit2gtk-4.1-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`.
 - **`release.yml`** runs when a `v*` tag is pushed and uses `tauri-action` to build:
-  - Linux: **AppImage** and **.deb**,
-  - macOS: a **universal `.dmg`** (Apple Silicon and Intel), **unsigned** for now,
+  - Linux, on `ubuntu-22.04` (the oldest runner, so the bundles work with an older glibc): **AppImage** and **.deb** (`--bundles deb,appimage`),
+  - macOS: a **universal `.dmg`** (Apple Silicon and Intel; `--target universal-apple-darwin`, with both Rust targets installed), **unsigned** for now: it's ad-hoc signed (`signingIdentity: "-"`), which Apple Silicon needs to launch it at all, and users remove the quarantine flag once (README),
 
-  then uploads them to a draft GitHub Release.
+  then uploads them to a draft GitHub Release named `TurboDiff vX.Y.Z`. A first step fails the run if the tag doesn't match the version in `package.json`. A pull request that changes the workflow, `tauri.conf.json` or the icons runs the same builds without a release and keeps the bundles as workflow artifacts. The .deb package is called `turbo-diff` (Tauri derives it from the product name) and installs `/usr/bin/turbodiff`.
 
-**Versioning:** SemVer. The version is kept the same in `package.json`, `Cargo.toml` and `tauri.conf.json`, and a script updates all three.
+**Versioning:** SemVer. The version is kept the same in `package.json`, the workspace `Cargo.toml` (both crates inherit it with `version.workspace = true`) and `tauri.conf.json`. `pnpm set-version X.Y.Z` (`scripts/set-version.js`) updates all three and `Cargo.lock`. `RELEASING.md` has the rest of the steps.
+
+**Icon:** `src-tauri/icons/icon.svg` is the source, a ± in GitHub's diff green and red on the macOS icon grid; `pnpm tauri icon src-tauri/icons/icon.svg` regenerates the sizes, of which only those listed in `tauri.conf.json` are kept.
 
 **Signing later:** adding macOS signing and notarisation means adding Apple certificates as CI secrets and the matching `tauri-action` settings. No code changes are needed.
 
@@ -424,6 +447,6 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 | WebKitGTK performance with huge diffs | Row-level virtualisation. Test on Linux first. |
 | Size of Shiki grammars | A curated list of about 50 common languages (§7.4), each a chunk loaded only when needed: about 3 MB before Tauri compresses the assets, C++ the largest at 0.8 MB. Other languages are plain text. |
 | Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Counts are compared with `git diff -w --numstat` on a fixture. |
-| Find in page (`Mod+F`, PRD §6.10) only finds rows the virtual list has rendered, because the rest of the diff isn't in the DOM | Known since M5. Options: a search of our own over the loaded diffs that scrolls to matches, or rendering more rows while the find bar is open. To be decided before release (M9). |
-| Tools that rewrite the index often (an editor running `git status` every few seconds) make TurboDiff list the changes again each time | Seen as an index change, so a refresh. Cheap for normal repositories, and an unchanged result changes nothing on screen. Revisit in the M9 performance pass if it shows up. |
-| Large-diff thresholds | PRD open question 1. Defined as constants. Checked in M5 on this repository (lock files and the generated `themes.css` start collapsed, hand-written files don't), with no reason found to change them; to be revisited in the M9 performance pass. |
+| Find in page (`Mod+F`, PRD §6.10) can't use the webview's find: the virtual list renders only rows near the viewport, and neither webview has a find bar | Settled in M9: a find bar of our own that searches the rows and loads every diff while it has a query (§7.5). |
+| Tools that rewrite the index often (an editor running `git status` every few seconds) make TurboDiff list the changes again each time | Seen as an index change, so a refresh. Cheap for normal repositories, and an unchanged result changes nothing on screen. Not seen in the M9 performance pass; a refresh of the large repository costs the same as listing it (about half a second in the backend). |
+| Large-diff thresholds | PRD open question 1. Defined as constants. Checked in M5 on this repository (lock files and the generated `themes.css` start collapsed, hand-written files don't), and again in M9 on the large repository, with no reason found to change them. |
