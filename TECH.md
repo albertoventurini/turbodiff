@@ -180,7 +180,7 @@ Work-tree content goes through the same **filters** git would apply (line-ending
 ### 4.7 App services
 
 - **CLI:** `turbodiff [PATH] [--base REF] [--compare REF]`, using `tauri-plugin-cli`. `tauri-plugin-single-instance` sends the arguments of a second launch to the running process, which opens or focuses the right window. The CLI accepts any revision expression and resolves it with gitoxide's `rev_parse`.
-- **Settings:** JSON stored in the platform config directory (`~/.config/turbodiff/` or `~/Library/Application Support/turbodiff/`) through `tauri-plugin-store`. Changes are sent to all windows with a `settings-changed` event.
+- **Settings:** JSON stored in the platform config directory, which Tauri names after the app identifier `com.albertoventurini.turbodiff` (`~/.config/com.albertoventurini.turbodiff/` or `~/Library/Application Support/com.albertoventurini.turbodiff/`), through `tauri-plugin-store`. Changes are sent to all windows with a `settings-changed` event.
 - **Recent repositories:** in the same store, at most 10 entries, deduplicated by work-tree path.
 - **Window size, position and sidebar width:** `tauri-plugin-window-state` for the window; the sidebar width is kept in the settings store.
 - **Native menus:** built with Tauri's menu API (File › Open, Open Recent, Close; app menu › Settings, Quit). Shortcuts are limited to PRD §6.10.
