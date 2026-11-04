@@ -1,9 +1,12 @@
 //! Saving settings and recent repositories with `tauri-plugin-store`
 //! (TECH.md §4.7), in `settings.json` in the platform config directory.
 
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use serde_json::Value;
-use tauri::AppHandle;
-use tauri_plugin_store::StoreExt;
+use tauri::{AppHandle, Manager, Wry};
+use tauri_plugin_store::{Store, StoreExt};
 
 use super::recent::RecentList;
 use super::settings::Settings;
@@ -14,7 +17,7 @@ const RECENT: &str = "recent";
 
 /// The saved settings and recent list. Anything unreadable gets its default.
 pub fn load(app: &AppHandle) -> (Settings, RecentList) {
-    match app.store(FILE) {
+    match store(app) {
         Ok(store) => (
             Settings::from_stored(store.get(SETTINGS).as_ref()),
             RecentList::from_stored(store.get(RECENT).as_ref()),
@@ -38,11 +41,18 @@ pub fn save_recent(app: &AppHandle, recent: &RecentList) {
 }
 
 fn save(app: &AppHandle, key: &str, value: Value) {
-    let result = app.store(FILE).and_then(|store| {
+    let result = store(app).and_then(|store| {
         store.set(key, value);
         store.save()
     });
     if let Err(err) = result {
         eprintln!("turbodiff: can't save {FILE}: {err}");
     }
+}
+
+/// The store file. A relative name would be resolved against the app's data
+/// directory, so the path is made absolute in the config directory.
+fn store(app: &AppHandle) -> tauri_plugin_store::Result<Arc<Store<Wry>>> {
+    let dir: PathBuf = app.path().app_config_dir()?;
+    app.store(dir.join(FILE))
 }
