@@ -68,12 +68,12 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M3 — UI shell and theming
 
-- [ ] A build step that turns Primer tokens into CSS custom properties for GitHub light and dark (TECH §6).
-- [ ] Mode switching: System, Light, Dark. Follow OS changes live, without the wrong theme flashing at startup.
-- [ ] App layout: toolbar, resizable and collapsible sidebar, main pane (PRD §6.4).
-- [ ] Welcome screen: Open button, recent repositories, drop hint (PRD §6.1).
-- [ ] Empty and error states: no changes, not a repository, invalid ref, no merge base (PRD §7).
-- [ ] Wire `api.ts` and the session, view and settings stores to the backend.
+- [x] A build step that turns Primer tokens into CSS custom properties for GitHub light and dark (TECH §6).
+- [x] Mode switching: System, Light, Dark. Follow OS changes live, without the wrong theme flashing at startup.
+- [x] App layout: toolbar, resizable and collapsible sidebar, main pane (PRD §6.4).
+- [x] Welcome screen: Open button, recent repositories, drop hint (PRD §6.1).
+- [x] Empty and error states: no changes, not a repository, invalid ref, no merge base (PRD §7).
+- [x] Wire `api.ts` and the session, view and settings stores to the backend.
 
 ## M4 — Sidebar and ref picker
 

@@ -81,7 +81,8 @@ turbodiff/
 │   │   ├── diff/           # row model, split/inline layout, virtual list
 │   │   ├── highlight/      # Shiki worker + client
 │   │   └── theme/          # Primer token mapping, mode switching
-│   └── styles/
+│   └── styles/             # global.css, themes.css (generated, §6)
+├── scripts/                # build-tokens.js (§6)
 ├── Cargo.toml              # Cargo workspace: src-tauri, crates/turbodiff-repo
 ├── clippy.toml             # disallowed gix write APIs, for the whole workspace (§8)
 ├── crates/
@@ -262,9 +263,12 @@ Every response that depends on the repository includes the `generation` it was c
 
 ## 6. Theming
 
-- **Tokens:** the colour values from `@primer/primitives` (light, dark, plus the diff-specific tokens) are compiled at build time into CSS custom properties under `[data-theme="github"][data-mode="light|dark"]`. Components use only these variables, never raw colour values.
-- **A theme** is a named set of tokens plus a Shiki theme name. v1 has one: `github` (`github-light` / `github-dark` in Shiki). Adding a theme means adding one token file and one entry in a list.
-- **Mode:** `System` follows `prefers-color-scheme` and Tauri's window theme-change event, and switches live. `Light` and `Dark` override it. The mode is set on `<html>` before the first paint, so the window never flashes the wrong theme.
+- **Tokens:** `scripts/build-tokens.js` (`pnpm build:tokens`) reads the resolved colour values from `@primer/primitives` (`dist/docs/functional/themes/light.json` and `dark.json`, which include the diff-specific `diffBlob-*` tokens) and writes them as CSS custom properties to `src/styles/themes.css`, one block per `[data-theme="github"][data-mode="light|dark"]`, sorted by name, with `color-scheme` set for the mode. **The output is committed**, not built on install or dev: it only changes when the package does, so a Primer upgrade shows up as a reviewable diff, and the app, lint and tests don't need an extra build step. A Vitest test fails when the committed file doesn't match what the script generates from the installed package. Mode-independent Primer tokens (sizes, spacing, radii, typography) are `:root` stylesheets that `src/styles/global.css` imports from the package directly.
+- **Components use only these variables,** never raw colour values. A Vitest test checks that no `.svelte` or `.css` file outside `themes.css` contains a colour literal, and that every `var(--…)` they use is defined.
+- **A theme** is a named set of tokens plus a Shiki theme name. v1 has one: `github` (`github-light` / `github-dark` in Shiki). Adding a theme means adding one entry to `THEMES` in `scripts/build-tokens.js` and one in `src/lib/theme/theme.svelte.ts`.
+- **Mode:** `System` follows `prefers-color-scheme` and Tauri's window theme-change event (whichever reports a change), and switches live. `Light` and `Dark` override it. On Linux, tao reads the colour scheme from the XDG desktop portal and sets GTK's dark preference, which WebKitGTK's `prefers-color-scheme` follows.
+- **No flash at startup:** every window is created from Rust with an initialization script (`src-tauri/src/app/boot.js`, filled in by `app/boot.rs`) that carries the current settings. It runs before the page's own scripts and sets `data-theme` and `data-mode` on `<html>`, and leaves the settings in `window.__TURBODIFF_SETTINGS__` so the settings store starts from them (the sidebar width is right on the first render, too). `index.html` links `global.css` as a blocking stylesheet, so the first paint already has the tokens, in dev as well. After that, the frontend keeps the attributes in step with the settings and the OS. Neither needs a window or plugin permission: the theme event only needs `core:event:allow-listen`.
+- The native window decorations and menu bar follow the OS, not a `Light` or `Dark` override.
 
 ---
 
@@ -274,13 +278,18 @@ Every response that depends on the repository includes the `generation` it was c
 
 These are Svelte rune stores, one set per window:
 
-- `session`: repository info, the comparison, the `ChangeSet`, `generation`.
-- `view`: selected file, diff style (inline or split), hide-whitespace, collapsed files, expanded context ranges.
+- `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, and a notice for failures that leave the window as it was (`open-failed`). Hide whitespace lives here, as part of the `Comparison`.
+- `view`: selected file, diff style (inline or split), collapsed files, whether the sidebar is collapsed, and from M5 expanded context ranges.
 - `settings`: shared with every window through the `settings-changed` event.
+- `recent`: the recent repositories for the welcome screen, following `recent-changed`.
+
+The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed to components through Svelte context, so component tests can pass in their own.
+
+`api.ts` wraps the generated bindings: commands that can fail throw an `ApiError` holding the `AppError`. **Stale responses:** the session store keeps the latest `generation` it has seen and drops any response computed for an older one (`accept`, `current`). Errors carry no generation, so an error is shown only if it answers the latest `set_comparison` request, and `cancelled` is never shown. A newly opened repository counts generations from zero again, since its backend session is new.
 
 ### 7.2 Components
 
-`Toolbar` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `FileTree` (tree or flat; compacted single-child folders) · `DiffList` · `FileDiff` · `HunkRows` (inline / split) · `ExpandControl` · `Welcome` · `SettingsWindow` · `EmptyState`.
+`Toolbar` · `RepoView` (toolbar, sidebar with a draggable divider whose width is saved as `sidebarWidth` when the drag ends, main pane) · `Notice` · `RefPicker` (search, Working tree pinned, tabs Branches | Tags | Commits, infinite scroll, SHA lookup) · `ModeToggle` · `FileTree` (tree or flat; compacted single-child folders) · `DiffList` · `FileDiff` · `HunkRows` (inline / split) · `ExpandControl` · `Welcome` · `SettingsWindow` · `EmptyState`.
 
 ### 7.3 Rendering large diffs
 
@@ -347,7 +356,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 - `FileTree`: compacting single-child folders, switching between tree and flat, selecting and deselecting files.
 - `RefPicker`: switching tabs, filtering, pinned Working tree, SHA lookup results.
 - Building rows for diffs: inline and split alignment, filler cells, word-level ranges, expand controls.
-- Theme and mode switching.
+- Theme and mode switching, the session, settings and recent stores (including discarding stale generations), the welcome screen, the layout and the empty and error states.
 - `api.ts` is mocked with fixed responses.
 
 ### 10.3 Not automated in v1
