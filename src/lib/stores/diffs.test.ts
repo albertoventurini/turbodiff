@@ -137,4 +137,26 @@ describe('DiffStore.refresh', () => {
     await store.expand('a.txt', { start: 21, end: 49, oldOffset: 0 }, 'all');
     expect(api.getLines).not.toHaveBeenCalled();
   });
+
+  it('shows the diffs that loadAll loads in batches, and skips loaded files', async () => {
+    vi.useFakeTimers();
+    try {
+      const session = new SessionStore();
+      session.generation = 1;
+      const store = new DiffStore(session);
+      api.getFileDiff.mockResolvedValue(versioned(added(50), 1));
+      await store.load('a.txt');
+      await store.loadAll(['a.txt', 'b.txt', 'c.txt']);
+      expect(api.getFileDiff).toHaveBeenCalledTimes(3);
+      expect(store.get('b.txt')).toBeUndefined();
+      // A load in the meantime waits for the batch rather than asking again.
+      await store.load('c.txt');
+      expect(api.getFileDiff).toHaveBeenCalledTimes(3);
+      vi.runAllTimers();
+      expect(store.get('b.txt')).toMatchObject({ kind: 'loaded', stale: false });
+      expect(store.get('c.txt')).toMatchObject({ kind: 'loaded', stale: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

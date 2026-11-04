@@ -24,6 +24,13 @@ export type Shown = LoadedDiff & { stale: boolean; forced: boolean };
 type State =
   { kind: 'loading'; shown: Shown | null } | ({ kind: 'loaded' } & Shown) | { kind: 'failed' };
 
+/**
+ * How long loads for find in page wait to be shown together. Each change to
+ * the loaded diffs rebuilds the whole row list, so thousands of them one by
+ * one would keep the window busy (TECH.md §7.5).
+ */
+const BATCH_MS = 250;
+
 /** Errors that only mean the request is out of date. */
 function stale(err: unknown): boolean {
   return err instanceof ApiError && ['cancelled', 'fileNotFound'].includes(err.error.kind);
@@ -31,6 +38,13 @@ function stale(err: unknown): boolean {
 
 export class DiffStore {
   #states = new SvelteMap<string, State>();
+  /**
+   * Changes from batched loads that aren't shown yet; `null` deletes. Not
+   * reactive on purpose: nothing shows them until `#flush`.
+   */
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
+  #pending = new Map<string, State | null>();
+  #timer: ReturnType<typeof setTimeout> | null = null;
   #key: unknown[] = [];
   #refreshed = 0;
 
@@ -44,6 +58,37 @@ export class DiffStore {
     if (key.length === this.#key.length && key.every((value, i) => value === this.#key[i])) return;
     this.#key = key;
     this.#states.clear();
+    this.#pending.clear();
+  }
+
+  /** A file's state, including a batched change that isn't shown yet. */
+  #peek(path: string): State | undefined {
+    return this.#pending.has(path)
+      ? (this.#pending.get(path) ?? undefined)
+      : this.#states.get(path);
+  }
+
+  /** Sets (or with `null`, deletes) a file's state, now or with the next batch. */
+  #write(path: string, state: State | null, batched: boolean): void {
+    if (batched) {
+      this.#pending.set(path, state);
+      this.#timer ??= setTimeout(() => this.#flush(), BATCH_MS);
+      return;
+    }
+    this.#pending.delete(path);
+    if (state) this.#states.set(path, state);
+    else this.#states.delete(path);
+  }
+
+  /** Shows the batched changes, all at once. */
+  #flush(): void {
+    if (this.#timer !== null) clearTimeout(this.#timer);
+    this.#timer = null;
+    for (const [path, state] of this.#pending) {
+      if (state) this.#states.set(path, state);
+      else this.#states.delete(path);
+    }
+    this.#pending.clear();
   }
 
   /**
@@ -54,6 +99,7 @@ export class DiffStore {
   refresh({ generation, filesChanged }: Refresh, files: readonly FileEntry[]): void {
     if (generation <= this.#refreshed) return;
     this.#refreshed = generation;
+    this.#flush();
     // A local lookup, never stored, so it needn't be reactive.
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const present = new Set(files.map((file) => file.path));
@@ -86,50 +132,46 @@ export class DiffStore {
   /**
    * Loads a file's diff, unless it's loaded or loading. A stale diff is loaded
    * again, and keeps showing meanwhile. `force` loads a large file anyway.
+   * A `batched` load is shown with the next batch.
    */
-  async load(path: string, force = false): Promise<void> {
-    const previous = this.#states.get(path);
+  async load(path: string, force = false, batched = false): Promise<void> {
+    const previous = this.#peek(path);
     const reload = previous?.kind === 'loaded' && (force || previous.stale);
     if (previous && !reload) return;
     const shown = reload ? previous : null;
     force ||= shown?.forced ?? false;
     const state: State = { kind: 'loading', shown };
-    this.#states.set(path, state);
-    const current = () => this.#states.get(path) === state;
+    this.#write(path, state, batched);
+    const current = () => this.#peek(path) === state;
     // A newer generation replaced the request: show what was there, still
     // stale, so it's loaded again.
-    const restore = () => {
-      if (shown) this.#states.set(path, { ...shown, kind: 'loaded' });
-      else this.#states.delete(path);
-    };
+    const restore = () => this.#write(path, shown && { ...shown, kind: 'loaded' }, batched);
     try {
       const diff = this.session.current(await api.getFileDiff(path, force));
       if (!current()) return;
       if (!diff) return restore();
-      this.#states.set(path, {
-        kind: 'loaded',
-        diff,
-        context: NO_CONTEXT,
-        stale: false,
-        forced: force,
-      });
+      this.#write(
+        path,
+        { kind: 'loaded', diff, context: NO_CONTEXT, stale: false, forced: force },
+        batched,
+      );
       if (shown && shown.context.size > 0) void this.#reveal(path, shown.context.keys());
     } catch (err) {
       if (!current()) return;
       if (stale(err)) restore();
-      else this.#states.set(path, { kind: 'failed' });
+      else this.#write(path, { kind: 'failed' }, batched);
     }
   }
 
   /**
    * Loads the diffs of every file in `paths` that has none yet, a few at a
-   * time, for find in page.
+   * time and shown in batches, for find in page.
    */
   async loadAll(paths: readonly string[], concurrency = 4): Promise<void> {
-    const queue = paths.filter((path) => !this.#states.has(path));
+    const queue = paths.filter((path) => this.#peek(path) === undefined);
     const worker = async () => {
       for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
-        await this.load(path);
+        await this.load(path, false, true);
       }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
