@@ -1,0 +1,85 @@
+// A stand-in for api.ts in component tests: `vi.mock('../api', () => import('../test/fakeApi'))`.
+// Commands are `vi.fn`s with harmless defaults, and `emit` fires events.
+import { vi } from 'vitest';
+import type {
+  AppError,
+  ChangeSet,
+  OpenFailed,
+  RecentRepo,
+  RepoOpened,
+  Settings,
+  WindowState,
+} from '../types';
+import { DEFAULT_SETTINGS } from '../stores/settings.svelte';
+
+export class ApiError extends Error {
+  constructor(readonly error: AppError) {
+    super(error.kind);
+  }
+}
+
+type Listeners = {
+  repoOpened: ((e: RepoOpened) => void)[];
+  openFailed: ((e: OpenFailed) => void)[];
+  settingsChanged: ((s: Settings) => void)[];
+  recentChanged: ((r: RecentRepo[]) => void)[];
+  systemTheme: ((dark: boolean) => void)[];
+};
+
+const listeners: Listeners = {
+  repoOpened: [],
+  openFailed: [],
+  settingsChanged: [],
+  recentChanged: [],
+  systemTheme: [],
+};
+
+function listen<K extends keyof Listeners>(key: K) {
+  return (cb: Listeners[K][number]) => {
+    (listeners[key] as unknown[]).push(cb);
+    return Promise.resolve(() => {
+      const list = listeners[key] as unknown[];
+      list.splice(list.indexOf(cb), 1);
+    });
+  };
+}
+
+/** Fires an event at every listener. */
+export function emit<K extends keyof Listeners>(
+  key: K,
+  payload: Parameters<Listeners[K][number]>[0],
+) {
+  for (const cb of [...listeners[key]]) (cb as (p: typeof payload) => void)(payload);
+}
+
+export function changeSet(overrides: Partial<ChangeSet> = {}): ChangeSet {
+  return {
+    generation: 1,
+    files: [],
+    totals: { files: 0, additions: 0, deletions: 0 },
+    noMergeBase: false,
+    ...overrides,
+  };
+}
+
+export const appVersion = vi.fn(() => Promise.resolve('0.0.0'));
+export const getWindowState = vi.fn((): Promise<WindowState> =>
+  Promise.resolve({ repo: null, error: null }),
+);
+export const openRepo = vi.fn<(path: string) => Promise<void>>(() => Promise.resolve());
+export const showOpenDialog = vi.fn(() => Promise.resolve());
+export const setComparison = vi.fn(() => Promise.resolve(changeSet()));
+export const getSettings = vi.fn(() => Promise.resolve(DEFAULT_SETTINGS));
+export const setSettings = vi.fn((patch: Partial<Settings>) =>
+  Promise.resolve({ ...DEFAULT_SETTINGS, ...patch }),
+);
+export const listRecent = vi.fn((): Promise<RecentRepo[]> => Promise.resolve([]));
+export const removeRecent = vi.fn<(path: string) => Promise<RecentRepo[]>>(() =>
+  Promise.resolve([]),
+);
+
+export const onRepoOpened = listen('repoOpened');
+export const onOpenFailed = listen('openFailed');
+export const onSettingsChanged = listen('settingsChanged');
+export const onRecentChanged = listen('recentChanged');
+export const onSystemThemeChanged = listen('systemTheme');
