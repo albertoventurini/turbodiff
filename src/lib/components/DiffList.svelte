@@ -367,24 +367,32 @@
   });
   const marks = $derived(marksByCell(matches, matches[currentIndex] ?? null));
 
+  /**
+   * Whether the current match is still the one picked for the query, rather
+   * than one the user stepped to. Until they step, it follows the first
+   * match at or below the top of the viewport as diffs load.
+   */
+  let picked = true;
+
   // A new query starts again from the top of the viewport.
   $effect.pre(() => {
     void query;
     currentMatch = null;
+    picked = true;
   });
 
-  // Until there's a current match (or after it went away), take the first
-  // one at or below the top of the viewport.
   $effect(() => {
-    if (currentIndex !== -1 || matches.length === 0) return;
+    if (matches.length === 0 || (currentIndex !== -1 && !picked)) return;
     untrack(() => {
       const next = matches.find((match) => offsets[indexByKey.get(match.key)!] >= top);
-      void goTo(next ?? matches[0]);
+      const match = next ?? matches[0];
+      if (!currentMatch || !sameMatch(match, currentMatch)) void goTo(match);
     });
   });
 
   function step(by: 1 | -1) {
     if (matches.length === 0) return;
+    picked = false;
     const from = currentIndex === -1 ? (by === 1 ? -1 : 0) : currentIndex;
     void goTo(matches[(from + by + matches.length) % matches.length]);
   }

@@ -322,6 +322,7 @@
      colour: `!important` beats the highlighting's inline styles. */
   .found {
     border-radius: var(--borderRadius-small);
+    box-shadow: inset 0 0 0 var(--borderWidth-thin) var(--borderColor-attention-emphasis);
     background: var(--bgColor-attention-muted);
     color: inherit;
   }
