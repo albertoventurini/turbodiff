@@ -56,15 +56,15 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M2 — IPC and app services
 
-- [ ] Tauri commands and the `AppError` enum, matching the API in TECH §5. Run repository work on a blocking thread pool.
-- [ ] A session per window: one repository and one comparison per window, a `generation` counter, and cancellation when the comparison changes.
-- [ ] A settings store: load, save, apply defaults, and broadcast `settings-changed` (PRD §6.8).
-- [ ] Recent repositories: at most 10, deduplicated, with entries whose path is gone marked as unavailable (PRD §6.1).
-- [ ] One window per repository. Opening a repository that's already open focuses its window.
-- [ ] CLI `turbodiff [PATH] [--base] [--compare]`, plus single-instance forwarding of a second launch to the running app (TECH §4.7).
-- [ ] Native menus: File › Open, Open Recent, Close; app menu › Settings, Quit. Shortcuts only as in PRD §6.10.
-- [ ] Opening a folder by dragging it onto a window.
-- [ ] Restore window size and position, and the sidebar width.
+- [x] Tauri commands and the `AppError` enum, matching the API in TECH §5. Run repository work on a blocking thread pool.
+- [x] A session per window: one repository and one comparison per window, a `generation` counter, and cancellation when the comparison changes.
+- [x] A settings store: load, save, apply defaults, and broadcast `settings-changed` (PRD §6.8).
+- [x] Recent repositories: at most 10, deduplicated, with entries whose path is gone marked as unavailable (PRD §6.1).
+- [x] One window per repository. Opening a repository that's already open focuses its window.
+- [x] CLI `turbodiff [PATH] [--base] [--compare]`, plus single-instance forwarding of a second launch to the running app (TECH §4.7).
+- [x] Native menus: File › Open, Open Recent, Close; app menu › Settings, Quit. Shortcuts only as in PRD §6.10.
+- [x] Opening a folder by dragging it onto a window.
+- [x] Restore window size and position, and the sidebar width.
 
 ## M3 — UI shell and theming
 
