@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window.",
+  "description": "The main window may call TurboDiff's own commands and nothing else.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["allow-app-version"]
 }
