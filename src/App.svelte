@@ -15,9 +15,9 @@
   const settings = new SettingsStore();
   const session = new SessionStore();
   const recent = new RecentStore();
-  setStores({ session, view: new ViewStore(settings.value.diffStyle), settings, recent });
-
   const system = new SystemMode();
+  setStores({ session, view: new ViewStore(settings.value.diffStyle), settings, recent, system });
+
   $effect(() => {
     const { theme, appearance } = settings.value;
     applyTheme(document.documentElement, theme, resolveMode(appearance, system.dark));

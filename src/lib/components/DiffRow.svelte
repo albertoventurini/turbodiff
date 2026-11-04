@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { segments, type Cell, type ExpandDirection, type Message, type Row } from '../diffRows';
-  import type { LineKind } from '../types';
+  import {
+    spans,
+    type Cell,
+    type ExpandDirection,
+    type Message,
+    type Row,
+    type Token,
+  } from '../diffRows';
+  import type { LineKind, Side } from '../types';
   import Button from './Button.svelte';
   import FileHeader from './FileHeader.svelte';
   import Icon from './Icon.svelte';
@@ -10,12 +17,24 @@
     ontoggle,
     onexpand,
     onload,
+    highlight = () => undefined,
   }: {
     row: Row;
     ontoggle: (path: string) => void;
     onexpand: (row: Extract<Row, { kind: 'hunk' }>, direction: ExpandDirection) => void;
     onload: (path: string) => void;
+    /** The highlighting of line `no` on one side of the row's file, if any. */
+    highlight?: (side: Side, no: number) => Token[] | undefined;
   } = $props();
+
+  /**
+   * The highlighting of a line: deleted lines are on the old side, added and
+   * unchanged ones on the new side (unchanged lines show the new text).
+   */
+  function tokens(kind: LineKind, oldNo: number | null, newNo: number | null) {
+    if (kind === 'del') return oldNo === null ? undefined : highlight('old', oldNo);
+    return newNo === null ? undefined : highlight('new', newNo);
+  }
 
   const MARKERS: Record<LineKind, string> = { ctx: ' ', add: '+', del: '−' };
 
@@ -45,12 +64,20 @@
   }
 </script>
 
-{#snippet code(kind: LineKind, text: string, words: Cell['words'], noNewline: boolean)}
+{#snippet code(
+  kind: LineKind,
+  text: string,
+  words: Cell['words'],
+  noNewline: boolean,
+  highlighted: Token[] | undefined,
+)}
   <span class="code" data-marker={MARKERS[kind]}>
     <span class="clip"
       ><span class="content"
-        >{#each segments(text, words) as part, i (i)}{#if part.changed}<span class="word"
-              >{part.text}</span
+        >{#each spans(text, words, highlighted) as part, i (i)}{#if part.changed}<span
+              class="word"
+              style={part.style}>{part.text}</span
+            >{:else if part.style}<span style={part.style}>{part.text}</span
             >{:else}{part.text}{/if}{/each}{#if noNewline}<span
             class="eof"
             title="No newline at end of file"
@@ -61,11 +88,17 @@
   </span>
 {/snippet}
 
-{#snippet half(cell: Cell | null, side: 'left' | 'right')}
+{#snippet half(cell: Cell | null, side: 'left' | 'right', newNo: number | null)}
   {#if cell}
     <span class="num {cell.kind}" data-no={cell.no}></span>
     <span class="cell {cell.kind}" data-side={side}>
-      {@render code(cell.kind, cell.text, cell.words, cell.noNewline)}
+      {@render code(
+        cell.kind,
+        cell.text,
+        cell.words,
+        cell.noNewline,
+        tokens(cell.kind, cell.no, newNo),
+      )}
     </span>
   {:else}
     <span class="num filler"></span>
@@ -130,13 +163,20 @@
     <span class="num {line.kind}" data-no={line.oldNo ?? ''}></span>
     <span class="num {line.kind}" data-no={line.newNo ?? ''}></span>
     <span class="cell {line.kind}">
-      {@render code(line.kind, line.text, line.words, line.noNewline)}
+      {@render code(
+        line.kind,
+        line.text,
+        line.words,
+        line.noNewline,
+        tokens(line.kind, line.oldNo, line.newNo),
+      )}
     </span>
   </div>
 {:else if row.kind === 'split'}
   <div class="body split">
-    {@render half(row.left, 'left')}
-    {@render half(row.right, 'right')}
+    <!-- An unchanged line's left cell has the old number, but the new text. -->
+    {@render half(row.left, 'left', row.right?.no ?? null)}
+    {@render half(row.right, 'right', row.right?.no ?? null)}
   </div>
 {:else if row.kind === 'message'}
   <div class="body message">{@render message(row.message)}</div>

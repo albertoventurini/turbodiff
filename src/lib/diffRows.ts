@@ -7,6 +7,11 @@ import type { DiffStyle, FileDiff, FileEntry, Hunk, Line, LineKind } from './typ
 export const EXPAND_STEP = 20;
 /** Matches the backend's `LARGE_DIFF_LINES`, for estimating unloaded files. */
 export const LARGE_DIFF_LINES = 1000;
+/**
+ * Matches the backend's `LARGE_FILE_BYTES`. Measured in UTF-16 code units
+ * here, which is close enough for deciding what to highlight.
+ */
+export const LARGE_FILE_BYTES = 500_000;
 
 /** A file's diff, once loaded, with the hidden lines revealed so far. */
 export type LoadedDiff = {
@@ -83,21 +88,44 @@ export function hunkHeader(hunk: Hunk): string {
   return `@@ -${range(hunk.oldStart, hunk.oldLines)} +${range(hunk.newStart, hunk.newLines)} @@`;
 }
 
-/** Splits `text` into runs, marking the changed `[start, end)` ranges. */
-export function segments(
+/** A run of a highlighted line, up to UTF-16 offset `end`; `style` is inline CSS. */
+export type Token = { end: number; style: string | null };
+
+export type Span = { text: string; changed: boolean; style: string | null };
+
+/**
+ * Splits `text` into runs, marking the changed `[start, end)` ranges and
+ * styling the runs that syntax highlighting covers. Highlighting that doesn't
+ * fit the text (it changed, or was split differently) is left out.
+ */
+export function spans(
   text: string,
   words: [number, number][] | null,
-): { text: string; changed: boolean }[] {
-  if (!words?.length) return [{ text, changed: false }];
-  const parts: { text: string; changed: boolean }[] = [];
-  let at = 0;
-  for (const [start, end] of words) {
-    if (start > at) parts.push({ text: text.slice(at, start), changed: false });
-    if (end > start) parts.push({ text: text.slice(start, end), changed: true });
-    at = Math.max(at, end);
+  tokens: Token[] | undefined,
+): Span[] {
+  const runs = tokens && tokens.length > 0 && tokens[tokens.length - 1].end <= text.length;
+  const styled = runs ? tokens : [];
+  // Every offset where a word range or a token starts or ends.
+  const cuts = new Set([0, text.length]);
+  for (const [start, end] of words ?? []) cuts.add(start).add(end);
+  for (const { end } of styled) cuts.add(end);
+  const offsets = [...cuts].filter((at) => at <= text.length).sort((a, b) => a - b);
+
+  const parts: Span[] = [];
+  let word = 0;
+  let token = 0;
+  for (let i = 0; i + 1 < offsets.length; i++) {
+    const [start, end] = [offsets[i], offsets[i + 1]];
+    while (words && word < words.length && words[word][1] <= start) word++;
+    while (token < styled.length && styled[token].end <= start) token++;
+    const changed = !!words && word < words.length && words[word][0] <= start;
+    const style = styled[token]?.style ?? null;
+    const last = parts[parts.length - 1];
+    if (last && last.changed === changed && last.style === style)
+      last.text += text.slice(start, end);
+    else parts.push({ text: text.slice(start, end), changed, style });
   }
-  if (at < text.length) parts.push({ text: text.slice(at), changed: false });
-  return parts;
+  return parts.length > 0 ? parts : [{ text, changed: false, style: null }];
 }
 
 /** The lines a file's diff is expected to take before it's loaded. */

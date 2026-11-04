@@ -3,6 +3,7 @@ import { getContext, setContext } from 'svelte';
 import type { RecentStore } from './recent.svelte';
 import type { SessionStore } from './session.svelte';
 import type { SettingsStore } from './settings.svelte';
+import type { SystemMode } from '../theme/theme.svelte';
 import type { ViewStore } from './view.svelte';
 
 export type Stores = {
@@ -10,6 +11,8 @@ export type Stores = {
   view: ViewStore;
   settings: SettingsStore;
   recent: RecentStore;
+  /** Whether the OS is in dark mode. */
+  system: SystemMode;
 };
 
 const KEY = Symbol('stores');

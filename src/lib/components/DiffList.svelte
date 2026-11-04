@@ -19,11 +19,21 @@
   import { orderedFiles } from '../fileTree';
   import { getStores } from '../stores/context';
   import { DiffStore } from '../stores/diffs.svelte';
+  import { HighlightStore } from '../stores/highlights.svelte';
+  import { resolveMode, THEMES } from '../theme/theme.svelte';
   import DiffRow from './DiffRow.svelte';
   import FileHeader from './FileHeader.svelte';
 
-  const { session, view, settings } = getStores();
+  const { session, view, settings, system } = getStores();
   const diffs = new DiffStore(session);
+  const highlights = new HighlightStore(session);
+  $effect(() => () => highlights.stop());
+
+  /** The Shiki theme for the current theme and mode. */
+  const shikiTheme = $derived.by(() => {
+    const { theme, appearance } = settings.value;
+    return THEMES[theme].shiki[resolveMode(appearance, system.dark)];
+  });
 
   const files = $derived.by(() => {
     const all = session.changes?.files ?? [];
@@ -34,6 +44,7 @@
   $effect.pre(() => {
     const { contextLines, diffAlgorithm } = settings.value;
     diffs.sync(session.changes, contextLines, diffAlgorithm);
+    highlights.sync(session.changes);
   });
 
   const wrap = $derived(settings.value.lineWrapping);
@@ -165,6 +176,21 @@
     for (let i = from; i <= to && i < rows.length; i++) {
       const row = rows[i];
       if (row.kind === 'placeholder') untrack(() => void diffs.load(row.file.path));
+    }
+  });
+
+  // Highlight the loaded diffs near the viewport. Rows show plain text until
+  // the highlighting arrives.
+  $effect(() => {
+    if (rows.length === 0) return;
+    const from = rows[rowAt(Math.max(0, top - LOAD_AHEAD * height))].fileIndex;
+    const to = rows[rowAt(top + (LOAD_AHEAD + 1) * height)].fileIndex;
+    const theme = shikiTheme;
+    for (let i = from; i <= to; i++) {
+      const loaded = diffs.get(files[i].path);
+      if (loaded && loaded !== 'failed') {
+        untrack(() => highlights.request(files[i], loaded.diff, theme));
+      }
     }
   });
 
@@ -370,6 +396,7 @@
             ontoggle={toggle}
             onexpand={expand}
             onload={(path) => void diffs.load(path, true)}
+            highlight={(side, no) => highlights.line(row.file.path, shikiTheme, side, no)}
           />
         </div>
       {/each}

@@ -8,7 +8,30 @@ import DiffList from './DiffList.svelte';
 
 vi.mock('../api', () => import('../test/fakeApi'));
 
-beforeEach(() => vi.resetAllMocks());
+// Highlighting colours the first three characters of each line: red on the
+// old side, blue on the new, in the light theme; the dark theme's are darker.
+const highlight = vi.hoisted(() => vi.fn());
+vi.mock('../highlight/client', () => ({
+  Highlighter: class {
+    broken = false;
+    highlight = highlight;
+    stop() {}
+  },
+}));
+const COLORS: Record<string, [string, string]> = {
+  'github-light': ['red', 'blue'],
+  'github-dark': ['darkred', 'darkblue'],
+};
+function fakeHighlight(text: string, _lang: string, theme: string) {
+  const lines = text.split('\n');
+  const color = COLORS[theme][text.startsWith('old') ? 0 : 1];
+  return Promise.resolve({ styles: [`color: ${color}`], lines: lines.map(() => [[3, 0]]) });
+}
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  highlight.mockImplementation(fakeHighlight);
+});
 
 function entry(path: string, overrides: Partial<FileEntry> = {}): FileEntry {
   return {
@@ -211,5 +234,66 @@ describe('DiffList', () => {
     expect(card('b.txt').length).toBeGreaterThan(0);
     view.selected = null;
     await vi.waitFor(() => expect(card('a.txt').length).toBeGreaterThan(0));
+  });
+
+  describe('syntax highlighting', () => {
+    function highlighted(diffStyle: 'inline' | 'split' = 'inline') {
+      api.getLines.mockImplementation((_path, side) =>
+        Promise.resolve(versioned(Array<string>(100).fill(side), 1)),
+      );
+      const stores = setup([entry('a.ts')], { 'a.ts': middle });
+      stores.view.diffStyle = diffStyle;
+      return stores;
+    }
+
+    /** The colour of the first run of the line holding `text`. */
+    function color(text: string, side?: 'left' | 'right'): string {
+      const cell = [...document.querySelectorAll<HTMLElement>('.cell')].find(
+        (cell) => cell.textContent === text && (!side || cell.dataset.side === side),
+      )!;
+      return cell.querySelector<HTMLElement>('.content > span')?.style.color ?? '';
+    }
+
+    it('colours lines from the side they belong to', async () => {
+      highlighted();
+      await vi.waitFor(() => expect(color('new fifty')).toBe('blue'));
+      expect(api.getLines).toHaveBeenCalledWith('a.ts', 'old', 1, 100);
+      expect(api.getLines).toHaveBeenCalledWith('a.ts', 'new', 1, 100);
+      expect(color('old fifty')).toBe('red');
+      expect(color('line 49')).toBe('blue');
+      // Word ranges are kept.
+      expect(screen.getByText('old', { selector: '.word' }).style.color).toBe('red');
+    });
+
+    it('colours unchanged lines from the new side in split view', async () => {
+      highlighted('split');
+      await vi.waitFor(() => expect(color('line 49', 'right')).toBe('blue'));
+      expect(color('line 49', 'left')).toBe('blue');
+      expect(color('old fifty', 'left')).toBe('red');
+    });
+
+    it('follows the mode', async () => {
+      const stores = highlighted();
+      await vi.waitFor(() => expect(color('new fifty')).toBe('blue'));
+      stores.settings.value = { ...stores.settings.value, appearance: 'dark' };
+      await vi.waitFor(() => expect(color('new fifty')).toBe('darkblue'));
+      expect(highlight).toHaveBeenCalledWith(expect.any(String), 'typescript', 'github-dark');
+    });
+
+    it('shows plain text until highlighting arrives, and if it fails', async () => {
+      highlight.mockResolvedValue(null);
+      highlighted();
+      await vi.waitFor(() => expect(highlight).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(color('new fifty')).toBe('');
+      expect(screen.getByText('new', { selector: '.word' })).not.toHaveAttribute('style');
+    });
+
+    it('leaves files in unknown languages plain', async () => {
+      setup([entry('a.txt')]);
+      await screen.findByText('line 49');
+      expect(api.getLines).not.toHaveBeenCalled();
+      expect(highlight).not.toHaveBeenCalled();
+    });
   });
 });

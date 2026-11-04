@@ -4,7 +4,7 @@ import {
   estimateLines,
   expandRange,
   hunkHeader,
-  segments,
+  spans,
   type LoadedDiff,
   type Row,
   type RowOptions,
@@ -131,32 +131,69 @@ describe('hunkHeader', () => {
   });
 });
 
-describe('segments', () => {
+describe('spans', () => {
+  const plain = (text: string, changed = false) => ({ text, changed, style: null });
+
   it('marks the changed ranges', () => {
     expect(
-      segments('let x = 1;', [
-        [4, 5],
-        [8, 9],
-      ]),
-    ).toEqual([
-      { text: 'let ', changed: false },
-      { text: 'x', changed: true },
-      { text: ' = ', changed: false },
-      { text: '1', changed: true },
-      { text: ';', changed: false },
-    ]);
+      spans(
+        'let x = 1;',
+        [
+          [4, 5],
+          [8, 9],
+        ],
+        undefined,
+      ),
+    ).toEqual([plain('let '), plain('x', true), plain(' = '), plain('1', true), plain(';')]);
   });
 
   it('keeps the text whole without ranges', () => {
-    expect(segments('abc', null)).toEqual([{ text: 'abc', changed: false }]);
-    expect(segments('abc', [])).toEqual([{ text: 'abc', changed: false }]);
+    expect(spans('abc', null, undefined)).toEqual([plain('abc')]);
+    expect(spans('abc', [], [])).toEqual([plain('abc')]);
+    expect(spans('', null, undefined)).toEqual([plain('')]);
   });
 
   it('uses UTF-16 offsets', () => {
-    expect(segments('é😀x', [[1, 3]])).toEqual([
-      { text: 'é', changed: false },
-      { text: '😀', changed: true },
-      { text: 'x', changed: false },
+    expect(spans('é😀x', [[1, 3]], undefined)).toEqual([plain('é'), plain('😀', true), plain('x')]);
+  });
+
+  it('styles the highlighted runs', () => {
+    const tokens = [
+      { end: 3, style: 'color:red' },
+      { end: 8, style: null },
+      { end: 10, style: 'color:blue' },
+    ];
+    expect(spans('let x = 1;', null, tokens)).toEqual([
+      { text: 'let', changed: false, style: 'color:red' },
+      plain(' x = '),
+      { text: '1;', changed: false, style: 'color:blue' },
+    ]);
+  });
+
+  it('splits runs where changed ranges and highlighting meet', () => {
+    const tokens = [
+      { end: 4, style: 'color:red' },
+      { end: 6, style: null },
+    ];
+    expect(spans('abcdef', [[2, 5]], tokens)).toEqual([
+      { text: 'ab', changed: false, style: 'color:red' },
+      { text: 'cd', changed: true, style: 'color:red' },
+      { text: 'e', changed: true, style: null },
+      plain('f'),
+    ]);
+  });
+
+  it('leaves the rest of a line plain when highlighting covers less of it', () => {
+    expect(spans('abc\r', null, [{ end: 3, style: 'color:red' }])).toEqual([
+      { text: 'abc', changed: false, style: 'color:red' },
+      plain('\r'),
+    ]);
+  });
+
+  it("ignores highlighting that doesn't fit the line", () => {
+    expect(spans('ab', [[0, 1]], [{ end: 5, style: 'color:red' }])).toEqual([
+      plain('a', true),
+      plain('b'),
     ]);
   });
 });

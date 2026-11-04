@@ -4,6 +4,7 @@ import { RecentStore } from '../stores/recent.svelte';
 import { SessionStore } from '../stores/session.svelte';
 import { SettingsStore } from '../stores/settings.svelte';
 import { ViewStore } from '../stores/view.svelte';
+import { SystemMode } from '../theme/theme.svelte';
 
 export function makeStores(): Stores & { context: ReturnType<typeof storesContext> } {
   const stores = {
@@ -11,6 +12,7 @@ export function makeStores(): Stores & { context: ReturnType<typeof storesContex
     view: new ViewStore('inline'),
     settings: new SettingsStore(),
     recent: new RecentStore(),
+    system: new SystemMode(),
   };
   return { ...stores, context: storesContext(stores) };
 }
