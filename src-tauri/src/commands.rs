@@ -234,6 +234,21 @@ pub async fn set_settings(app: AppHandle, patch: SettingsPatch) -> Settings {
     app::update_settings(&app, patch)
 }
 
+/// Restores the default settings, saves them and sends `settings-changed` to
+/// every window.
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_settings(app: AppHandle) -> Settings {
+    app::reset_settings(&app)
+}
+
+/// The installed monospace fonts, for the code font setting.
+#[tauri::command]
+#[specta::specta]
+pub async fn list_monospace_fonts() -> AppResult<Vec<String>> {
+    blocking(|| Ok(app::fonts::monospace_fonts())).await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn list_recent(app: AppHandle) -> Vec<RecentRepo> {
@@ -289,6 +304,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             get_lines,
             get_settings,
             set_settings,
+            reset_settings,
+            list_monospace_fonts,
             list_recent,
             remove_recent,
         ])

@@ -18,6 +18,8 @@
     "allow-get-lines",
     "allow-get-settings",
     "allow-set-settings",
+    "allow-reset-settings",
+    "allow-list-monospace-fonts",
     "allow-list-recent",
     "allow-remove-recent",
     "core:event:allow-listen",

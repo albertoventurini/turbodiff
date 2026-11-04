@@ -140,6 +140,15 @@ impl Settings {
         );
     }
 
+    /// Restores every setting shown in the Settings window. The sidebar width
+    /// isn't one of them, so it stays.
+    pub fn reset(&mut self) {
+        *self = Self {
+            sidebar_width: self.sidebar_width,
+            ..Self::default()
+        };
+    }
+
     /// Reads stored settings. Anything missing or invalid gets its default,
     /// field by field, so one bad value doesn't reset the rest.
     pub fn from_stored(stored: Option<&Value>) -> Self {
@@ -223,6 +232,27 @@ mod tests {
         });
         assert_eq!(settings.font_size, 10);
         assert_eq!(settings.tab_width, 8);
+    }
+
+    #[test]
+    fn reset_restores_defaults_but_keeps_the_sidebar_width() {
+        let mut settings = Settings {
+            appearance: Appearance::Dark,
+            code_font: "Fira Code".into(),
+            font_size: 18,
+            context_lines: 10,
+            diff_algorithm: Algorithm::Myers,
+            sidebar_width: 400,
+            ..Default::default()
+        };
+        settings.reset();
+        assert_eq!(
+            settings,
+            Settings {
+                sidebar_width: 400,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]

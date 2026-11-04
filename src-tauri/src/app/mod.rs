@@ -3,6 +3,7 @@
 
 mod boot;
 pub mod cli;
+pub mod fonts;
 pub mod menu;
 pub mod placement;
 pub mod recent;
@@ -89,10 +90,19 @@ pub fn setup(app: &AppHandle, launch: cli::Launch) -> tauri::Result<()> {
 
 /// Applies `patch`, saves the result and sends it to every window.
 pub fn update_settings(app: &AppHandle, patch: SettingsPatch) -> Settings {
+    change_settings(app, |settings| settings.apply(patch))
+}
+
+/// Restores the defaults, saves them and sends them to every window.
+pub fn reset_settings(app: &AppHandle) -> Settings {
+    change_settings(app, Settings::reset)
+}
+
+fn change_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) -> Settings {
     let state = app.state::<AppState>();
     let settings = {
         let mut settings = lock(&state.settings);
-        settings.apply(patch);
+        change(&mut settings);
         settings.clone()
     };
     store::save_settings(app, &settings);

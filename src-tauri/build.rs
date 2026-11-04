@@ -17,6 +17,8 @@ fn main() {
             "get_lines",
             "get_settings",
             "set_settings",
+            "reset_settings",
+            "list_monospace_fonts",
             "list_recent",
             "remove_recent",
         ]),

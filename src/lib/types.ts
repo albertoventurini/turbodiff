@@ -46,6 +46,13 @@ export const commands = {
 	 *  every window.
 	 */
 	setSettings: (patch: SettingsPatch) => __TAURI_INVOKE<Settings>("set_settings", { patch }),
+	/**
+	 *  Restores the default settings, saves them and sends `settings-changed` to
+	 *  every window.
+	 */
+	resetSettings: () => __TAURI_INVOKE<Settings>("reset_settings"),
+	/**  The installed monospace fonts, for the code font setting. */
+	listMonospaceFonts: () => typedError<string[], AppError>(__TAURI_INVOKE("list_monospace_fonts")),
 	listRecent: () => __TAURI_INVOKE<RecentRepo[]>("list_recent"),
 	removeRecent: (path: string) => __TAURI_INVOKE<RecentRepo[]>("remove_recent", { path }),
 };
