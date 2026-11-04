@@ -36,7 +36,7 @@
   <span class="path" title={file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}>
     {#if file.oldPath}
       <span class="old">{file.oldPath}</span>
-      <span class="arrow" aria-label="renamed to">→</span>
+      <span class="arrow" role="img" aria-label="renamed to">→</span>
     {/if}
     <span>{file.path}</span>
   </span>
