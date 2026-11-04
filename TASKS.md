@@ -91,19 +91,19 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M5 — Diff view
 
-- [ ] A row model that turns a `FileDiff` into rows: file header, hunk header, lines, expand controls.
-- [ ] A virtual list with fixed row heights, and measured heights when wrapping is on (TECH §7.3).
-- [ ] Sticky file headers, with a collapse chevron, path, rename arrow, status badge, `+/−` counts and "copy path".
-- [ ] Inline (unified) view, with old and new line numbers.
-- [ ] Side-by-side view: changed blocks aligned with filler cells.
-- [ ] Word-level highlighting in both views.
-- [ ] Expand context: up, down and all, using `get_lines`.
-- [ ] Load diffs on demand near the viewport, with placeholders of estimated height.
-- [ ] Single-file focus, restoring the all-files scroll position when you go back (PRD §6.6).
-- [ ] Special files: too large (with "Load diff"), binary, renames, mode changes, submodules, deleted, whitespace-only.
-- [ ] Toolbar toggles for diff style and hide whitespace.
-- [ ] Copying text without line numbers or `+`/`−` markers; soft wrap or horizontal scroll, depending on the setting.
-- [ ] Component tests for building rows (inline, split, filler cells, word-level ranges).
+- [x] A row model that turns a `FileDiff` into rows: file header, hunk header, lines, expand controls.
+- [x] A virtual list with fixed row heights, and measured heights when wrapping is on (TECH §7.3).
+- [x] Sticky file headers, with a collapse chevron, path, rename arrow, status badge, `+/−` counts and "copy path".
+- [x] Inline (unified) view, with old and new line numbers.
+- [x] Side-by-side view: changed blocks aligned with filler cells.
+- [x] Word-level highlighting in both views.
+- [x] Expand context: up, down and all, using `get_lines`.
+- [x] Load diffs on demand near the viewport, with placeholders of estimated height.
+- [x] Single-file focus, restoring the all-files scroll position when you go back (PRD §6.6).
+- [x] Special files: too large (with "Load diff"), binary, renames, mode changes, submodules, deleted, whitespace-only.
+- [x] Toolbar toggles for diff style and hide whitespace.
+- [x] Copying text without line numbers or `+`/`−` markers; soft wrap or horizontal scroll, depending on the setting.
+- [x] Component tests for building rows (inline, split, filler cells, word-level ranges).
 
 ## M6 — Syntax highlighting
 
@@ -137,5 +137,5 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## Open questions to settle along the way
 
-- Large-diff thresholds (PRD §11.1): tune during M5 using real repositories.
+- Large-diff thresholds (PRD §11.1): checked in M5 on this repository and left as they are; revisit in the M9 performance pass.
 - ~~Commits tab, `HEAD` only or all branches (PRD §11.2): decide during M4.~~ Settled in M4: `HEAD` only.
