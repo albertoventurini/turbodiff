@@ -37,9 +37,16 @@
     untrack(() => void session.compare(session.comparison));
   });
 
-  /** `Esc` goes back to all files (PRD §6.10), unless a popup used it to close. */
+  /**
+   * `Mod+F` finds in the page; `Esc` goes back to all files (PRD §6.10),
+   * unless a popup or the find bar used it to close.
+   */
   function onkeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && !e.defaultPrevented && view.selected !== null) {
+    const mod = navigator.platform.startsWith('Mac') ? e.metaKey : e.ctrlKey;
+    if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault();
+      view.find();
+    } else if (e.key === 'Escape' && !e.defaultPrevented && view.selected !== null) {
       view.selected = null;
     }
   }

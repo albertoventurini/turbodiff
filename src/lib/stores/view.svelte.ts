@@ -19,6 +19,10 @@ export class ViewStore {
   diffStyle = $state<DiffStyle>('inline');
   /** Paths of the files collapsed in the diff list. */
   collapsed = new SvelteSet<string>();
+  /** Whether the find bar is open (PRD §6.10). */
+  findOpen = $state(false);
+  /** Counts `Mod+F` presses, so the find bar takes focus on each one. */
+  findRequests = $state(0);
 
   constructor(diffStyle: DiffStyle) {
     this.diffStyle = diffStyle;
@@ -27,5 +31,11 @@ export class ViewStore {
   /** Selects a file, or goes back to all files when it's already selected. */
   toggleSelected(path: string): void {
     this.selected = this.selected === path ? null : path;
+  }
+
+  /** Opens the find bar, or focuses it again. */
+  find(): void {
+    this.findOpen = true;
+    this.findRequests++;
   }
 }

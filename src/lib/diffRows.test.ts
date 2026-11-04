@@ -133,7 +133,7 @@ describe('hunkHeader', () => {
 });
 
 describe('spans', () => {
-  const plain = (text: string, changed = false) => ({ text, changed, style: null });
+  const plain = (text: string, changed = false) => ({ text, changed, style: null, mark: null });
 
   it('marks the changed ranges', () => {
     expect(
@@ -165,9 +165,9 @@ describe('spans', () => {
       { end: 10, style: 'color:blue' },
     ];
     expect(spans('let x = 1;', null, tokens)).toEqual([
-      { text: 'let', changed: false, style: 'color:red' },
+      { text: 'let', changed: false, style: 'color:red', mark: null },
       plain(' x = '),
-      { text: '1;', changed: false, style: 'color:blue' },
+      { text: '1;', changed: false, style: 'color:blue', mark: null },
     ]);
   });
 
@@ -177,17 +177,31 @@ describe('spans', () => {
       { end: 6, style: null },
     ];
     expect(spans('abcdef', [[2, 5]], tokens)).toEqual([
-      { text: 'ab', changed: false, style: 'color:red' },
-      { text: 'cd', changed: true, style: 'color:red' },
-      { text: 'e', changed: true, style: null },
+      { text: 'ab', changed: false, style: 'color:red', mark: null },
+      { text: 'cd', changed: true, style: 'color:red', mark: null },
+      { text: 'e', changed: true, style: null, mark: null },
       plain('f'),
     ]);
   });
 
   it('leaves the rest of a line plain when highlighting covers less of it', () => {
     expect(spans('abc\r', null, [{ end: 3, style: 'color:red' }])).toEqual([
-      { text: 'abc', changed: false, style: 'color:red' },
+      { text: 'abc', changed: false, style: 'color:red', mark: null },
       plain('\r'),
+    ]);
+  });
+
+  it('marks the matches of find in page, each as a run of its own', () => {
+    const marks = [
+      { start: 0, end: 2, current: false },
+      { start: 2, end: 4, current: true },
+    ];
+    expect(spans('aaaab', [[1, 3]], undefined, marks)).toEqual([
+      { text: 'a', changed: false, style: null, mark: 'match' },
+      { text: 'a', changed: true, style: null, mark: 'match' },
+      { text: 'a', changed: true, style: null, mark: 'current' },
+      { text: 'a', changed: false, style: null, mark: 'current' },
+      plain('b'),
     ]);
   });
 

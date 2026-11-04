@@ -5,8 +5,10 @@
     type ExpandDirection,
     type Message,
     type Row,
+    type Span,
     type Token,
   } from '../diffRows';
+  import type { FindCell, Mark } from '../find';
   import type { LineKind, Side } from '../types';
   import Button from './Button.svelte';
   import FileHeader from './FileHeader.svelte';
@@ -18,6 +20,7 @@
     onexpand,
     onload,
     highlight = () => undefined,
+    marks = () => undefined,
   }: {
     row: Row;
     ontoggle: (path: string) => void;
@@ -25,6 +28,8 @@
     onload: (path: string) => void;
     /** The highlighting of line `no` on one side of the row's file, if any. */
     highlight?: (side: Side, no: number) => Token[] | undefined;
+    /** The matches of find in page in one of the row's cells. */
+    marks?: (cell: FindCell) => Mark[] | undefined;
   } = $props();
 
   /**
@@ -64,22 +69,27 @@
   }
 </script>
 
+{#snippet part(part: Span)}{#if part.changed}<span class="word" style={part.style}>{part.text}</span
+    >{:else if part.style}<span style={part.style}>{part.text}</span
+    >{:else}{part.text}{/if}{/snippet}
+
 {#snippet code(
   kind: LineKind,
   text: string,
   words: Cell['words'],
   noNewline: boolean,
   highlighted: Token[] | undefined,
+  found: Mark[] | undefined,
 )}
   <span class="code" data-marker={MARKERS[kind]}>
     <span class="clip"
       ><span class="content"
-        >{#each spans(text, words, highlighted) as part, i (i)}{#if part.changed}<span
-              class="word"
-              style={part.style}>{part.text}</span
-            >{:else if part.style}<span style={part.style}>{part.text}</span
-            >{:else}{part.text}{/if}{/each}{#if noNewline}<span
+        >{#each spans(text, words, highlighted, found) as p, i (i)}{#if p.mark}<mark
+              class="found"
+              class:current={p.mark === 'current'}>{@render part(p)}</mark
+            >{:else}{@render part(p)}{/if}{/each}{#if noNewline}<span
             class="eof"
+            role="img"
             title="No newline at end of file"
             aria-label="No newline at end of file"><Icon name="no-entry" /></span
           >{/if}</span
@@ -98,6 +108,7 @@
         cell.words,
         cell.noNewline,
         tokens(cell.kind, cell.no, newNo),
+        marks(side),
       )}
     </span>
   {:else}
@@ -169,6 +180,7 @@
         line.words,
         line.noNewline,
         tokens(line.kind, line.oldNo, line.newNo),
+        marks('line'),
       )}
     </span>
   </div>
@@ -304,6 +316,21 @@
     border-radius: var(--borderRadius-small);
     background: var(--diffBlob-deletionWord-bgColor);
     color: var(--diffBlob-deletionWord-fgColor);
+  }
+
+  /* Matches of find in page. The current one is solid, with its text in one
+     colour: `!important` beats the highlighting's inline styles. */
+  .found {
+    border-radius: var(--borderRadius-small);
+    background: var(--bgColor-attention-muted);
+    color: inherit;
+  }
+  .found.current {
+    background: var(--bgColor-attention-emphasis);
+    color: var(--fgColor-onEmphasis);
+  }
+  .found.current :global(span) {
+    color: inherit !important;
   }
 
   .num.filler {

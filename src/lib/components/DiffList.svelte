@@ -13,16 +13,18 @@
 </script>
 
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
   import { buildRows, type ExpandDirection, type Row } from '../diffRows';
   import { orderedFiles } from '../fileTree';
+  import { findMatches, marksByCell, sameMatch, type FindMatch } from '../find';
   import { getStores } from '../stores/context';
   import { DiffStore } from '../stores/diffs.svelte';
   import { HighlightStore } from '../stores/highlights.svelte';
   import { resolveMode, THEMES } from '../theme/theme.svelte';
   import DiffRow from './DiffRow.svelte';
   import FileHeader from './FileHeader.svelte';
+  import FindBar from './FindBar.svelte';
 
   const { session, view, settings, system } = getStores();
   const diffs = new DiffStore(session);
@@ -340,6 +342,83 @@
     return () => node.removeEventListener('wheel', onwheel);
   }
 
+  // Find in page (PRD §6.10): the matches are found in the rows, since most of
+  // them aren't rendered. While there's a query, every file's diff is loaded.
+  let query = $state('');
+  const searchAll = $derived(view.findOpen && query !== '');
+  /** The files whose lines are searched: collapsed ones show none. */
+  const searched = $derived(
+    files.filter((file) => !file.submodule && !view.collapsed.has(file.path)),
+  );
+  $effect(() => {
+    if (!searchAll) return;
+    const paths = searched.map((file) => file.path);
+    untrack(() => void diffs.loadAll(paths));
+  });
+  const searching = $derived(
+    searchAll && searched.some((file) => diffs.get(file.path) === undefined),
+  );
+
+  const matches = $derived(view.findOpen ? findMatches(rows, query) : []);
+  let currentMatch = $state<FindMatch | null>(null);
+  const currentIndex = $derived.by(() => {
+    const current = currentMatch;
+    return current ? matches.findIndex((match) => sameMatch(match, current)) : -1;
+  });
+  const marks = $derived(marksByCell(matches, matches[currentIndex] ?? null));
+
+  // A new query starts again from the top of the viewport.
+  $effect.pre(() => {
+    void query;
+    currentMatch = null;
+  });
+
+  // Until there's a current match (or after it went away), take the first
+  // one at or below the top of the viewport.
+  $effect(() => {
+    if (currentIndex !== -1 || matches.length === 0) return;
+    untrack(() => {
+      const next = matches.find((match) => offsets[indexByKey.get(match.key)!] >= top);
+      void goTo(next ?? matches[0]);
+    });
+  });
+
+  function step(by: 1 | -1) {
+    if (matches.length === 0) return;
+    const from = currentIndex === -1 ? (by === 1 ? -1 : 0) : currentIndex;
+    void goTo(matches[(from + by + matches.length) % matches.length]);
+  }
+
+  /** Makes `match` current and scrolls it into view, if it isn't in view. */
+  async function goTo(match: FindMatch) {
+    currentMatch = match;
+    const row = indexByKey.get(match.key);
+    if (!scroller || row === undefined) return;
+    // The pinned header covers the top of the viewport.
+    const above = offsets[row] + GAP < scroller.scrollTop + HEADER_HEIGHT;
+    const below = offsets[row + 1] + GAP > scroller.scrollTop + height;
+    if (above || below) {
+      scroller.scrollTop = Math.max(0, offsets[row] + GAP - height / 3);
+      onscroll();
+    }
+    await tick();
+    const mark = scroller.querySelector<HTMLElement>('mark.current');
+    const clip = mark?.closest<HTMLElement>('.clip');
+    if (wrap || !hscroll || !mark || !clip) return;
+    // Where the match starts and ends within the line, scrolled or not.
+    const start = mark.getBoundingClientRect().left - clip.getBoundingClientRect().left + scrollX;
+    const end = start + mark.offsetWidth;
+    if (start < scrollX || end > scrollX + clip.clientWidth) {
+      hscroll.scrollLeft = Math.max(0, start - clip.clientWidth / 3);
+      scrollX = hscroll.scrollLeft;
+    }
+  }
+
+  function closeFind() {
+    view.findOpen = false;
+    scroller?.focus();
+  }
+
   // In split view, a selection stays on the side it started on.
   let selectSide = $state<'left' | 'right' | null>(null);
   function onpointerdown(e: PointerEvent) {
@@ -366,6 +445,8 @@
 </script>
 
 <div class="diff-list" data-select={selectSide} style={vars}>
+  <!-- Focusable, so the diff scrolls from the keyboard. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
     class="scroller"
     bind:this={scroller}
@@ -376,6 +457,7 @@
     {@attach wheel}
     role="region"
     aria-label="Diff"
+    tabindex="0"
   >
     <span class="probe" aria-hidden="true" bind:offsetWidth={probeWidth}>{'0'.repeat(100)}</span>
     {#if sticky}
@@ -406,11 +488,26 @@
             onexpand={expand}
             onload={(path) => void diffs.load(path, true)}
             highlight={(side, no) => highlights.line(row.file.path, shikiTheme, side, no)}
+            marks={(cell) => marks.get(`${row.key}\0${cell}`)}
           />
         </div>
       {/each}
     </div>
   </div>
+  {#if view.findOpen}
+    <div class="find">
+      <FindBar
+        bind:query
+        count={matches.length}
+        current={currentIndex === -1 ? null : currentIndex}
+        {searching}
+        requests={view.findRequests}
+        onnext={() => step(1)}
+        onprevious={() => step(-1)}
+        onclose={closeFind}
+      />
+    </div>
+  {/if}
   {#if maxScrollX > 0}
     <div class="hscroll" bind:this={hscroll} onscroll={onhscroll}>
       <div style="width: calc(100% + {maxScrollX}px)"></div>
@@ -420,6 +517,7 @@
 
 <style>
   .diff-list {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -432,6 +530,13 @@
     min-height: 0;
     overflow: hidden auto;
     overflow-anchor: none;
+  }
+
+  .find {
+    position: absolute;
+    top: var(--base-size-8);
+    right: var(--base-size-24);
+    z-index: 2;
   }
 
   .probe {

@@ -119,4 +119,14 @@ describe('RepoView', () => {
     stores.session.changes = changeSet({ generation: 2, files: [file('b.txt')] });
     await vi.waitFor(() => expect([...stores.view.collapsed]).toEqual(['b.txt']));
   });
+
+  it('opens find in page with Mod+F', async () => {
+    const { view } = setup();
+    await fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(view.findOpen).toBe(true);
+    await fireEvent.keyDown(window, { key: 'F', ctrlKey: true });
+    expect(view.findRequests).toBe(2);
+    await fireEvent.keyDown(window, { key: 'f', ctrlKey: true, shiftKey: true });
+    expect(view.findRequests).toBe(2);
+  });
 });

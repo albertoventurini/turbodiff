@@ -1,6 +1,7 @@
 // The diff view's rows (TECH.md §7.3): every file's header, hunk headers,
 // lines, expand controls and messages, in one flat list that the virtual list
 // renders. Inline rows hold one line; split rows hold an old and a new cell.
+import type { Mark } from './find';
 import type { DiffStyle, FileDiff, FileEntry, Hunk, Line, LineKind } from './types';
 
 /** How many hidden lines one click on "expand up" or "expand down" reveals. */
@@ -91,41 +92,55 @@ export function hunkHeader(hunk: Hunk): string {
 /** A run of a highlighted line, up to UTF-16 offset `end`; `style` is inline CSS. */
 export type Token = { end: number; style: string | null };
 
-export type Span = { text: string; changed: boolean; style: string | null };
+export type Span = {
+  text: string;
+  changed: boolean;
+  style: string | null;
+  /** A match of find in page, and whether it's the current one. */
+  mark: 'match' | 'current' | null;
+};
 
 /**
- * Splits `text` into runs, marking the changed `[start, end)` ranges and
- * styling the runs that syntax highlighting covers. Highlighting that doesn't
- * fit the text (it changed, or was split differently) is left out.
+ * Splits `text` into runs, marking the changed `[start, end)` ranges and the
+ * matches of find in page, and styling the runs that syntax highlighting
+ * covers. Highlighting that doesn't fit the text (it changed, or was split
+ * differently) is left out.
  */
 export function spans(
   text: string,
   words: [number, number][] | null,
   tokens: Token[] | undefined,
+  marks: readonly Mark[] = [],
 ): Span[] {
   const runs = tokens && tokens.length > 0 && tokens[tokens.length - 1].end <= text.length;
   const styled = runs ? tokens : [];
-  // Every offset where a word range or a token starts or ends.
+  // Every offset where a word range, a token or a mark starts or ends.
   const cuts = new Set([0, text.length]);
   for (const [start, end] of words ?? []) cuts.add(start).add(end);
   for (const { end } of styled) cuts.add(end);
+  for (const { start, end } of marks) cuts.add(start).add(end);
   const offsets = [...cuts].filter((at) => at <= text.length).sort((a, b) => a - b);
 
   const parts: Span[] = [];
   let word = 0;
   let token = 0;
+  let mark = 0;
   for (let i = 0; i + 1 < offsets.length; i++) {
     const [start, end] = [offsets[i], offsets[i + 1]];
     while (words && word < words.length && words[word][1] <= start) word++;
     while (token < styled.length && styled[token].end <= start) token++;
+    while (mark < marks.length && marks[mark].end <= start) mark++;
     const changed = !!words && word < words.length && words[word][0] <= start;
     const style = styled[token]?.style ?? null;
+    const marked = mark < marks.length && marks[mark].start <= start ? marks[mark] : null;
+    const kind = marked ? (marked.current ? 'current' : 'match') : null;
     const last = parts[parts.length - 1];
-    if (last && last.changed === changed && last.style === style)
+    // Each mark stays one run of its own, so it can be found in the page.
+    if (last && last.changed === changed && last.style === style && last.mark === kind && !kind)
       last.text += text.slice(start, end);
-    else parts.push({ text: text.slice(start, end), changed, style });
+    else parts.push({ text: text.slice(start, end), changed, style, mark: kind });
   }
-  return parts.length > 0 ? parts : [{ text, changed: false, style: null }];
+  return parts.length > 0 ? parts : [{ text, changed: false, style: null, mark: null }];
 }
 
 /** The lines a file's diff is expected to take before it's loaded. */

@@ -336,4 +336,75 @@ describe('DiffList', () => {
       expect(highlight).not.toHaveBeenCalled();
     });
   });
+
+  describe('find in page', () => {
+    const marked = () =>
+      [...document.querySelectorAll('mark.found')].map((mark) => [
+        mark.textContent,
+        mark.classList.contains('current'),
+      ]);
+
+    async function find(query: string, files = [entry('a.txt'), entry('b.txt')]) {
+      const stores = setup(files);
+      await screen.findAllByText('line 49');
+      stores.view.find();
+      const input = await screen.findByRole('textbox', { name: 'Find in diff' });
+      await fireEvent.input(input, { target: { value: query } });
+      return { stores, input };
+    }
+
+    it('marks every match, and steps through them with Enter and Shift+Enter', async () => {
+      const { input } = await find('FIFTY');
+      await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('1 of 4'));
+      expect(marked()).toEqual([
+        ['fifty', true],
+        ['fifty', false],
+        ['fifty', false],
+        ['fifty', false],
+      ]);
+      await fireEvent.keyDown(input, { key: 'Enter' });
+      expect(screen.getByRole('status')).toHaveTextContent('2 of 4');
+      expect(marked()[1]).toEqual(['fifty', true]);
+      await fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      await fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+      expect(screen.getByRole('status')).toHaveTextContent('4 of 4');
+      await fireEvent.click(screen.getByRole('button', { name: 'Next match' }));
+      expect(screen.getByRole('status')).toHaveTextContent('1 of 4');
+    });
+
+    it('says when nothing matches', async () => {
+      await find('nowhere');
+      expect(screen.getByRole('status')).toHaveTextContent('No results');
+      expect(screen.getByRole('button', { name: 'Next match' })).toBeDisabled();
+    });
+
+    it('loads every diff to search it, and leaves out collapsed files', async () => {
+      // Tall enough that only the first files load on their own.
+      const files = Array.from({ length: 30 }, (_, i) =>
+        entry(`f${String(i).padStart(2, '0')}.txt`, { additions: 200 }),
+      );
+      const stores = setup(files);
+      stores.view.collapsed.add('f29.txt');
+      await vi.waitFor(() => expect(api.getFileDiff).toHaveBeenCalled());
+      expect(api.getFileDiff).not.toHaveBeenCalledWith('f28.txt', false);
+      stores.view.find();
+      await fireEvent.input(await screen.findByRole('textbox', { name: 'Find in diff' }), {
+        target: { value: 'old' },
+      });
+      await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('1 of 29'));
+      expect(api.getFileDiff).toHaveBeenCalledWith('f28.txt', false);
+      expect(api.getFileDiff).not.toHaveBeenCalledWith('f29.txt', false);
+    });
+
+    it('closes with Esc, keeping the query for next time', async () => {
+      const { stores, input } = await find('fifty');
+      const escape = await fireEvent.keyDown(input, { key: 'Escape' });
+      expect(escape).toBe(false);
+      expect(stores.view.findOpen).toBe(false);
+      expect(screen.queryByRole('search')).toBeNull();
+      expect(marked()).toEqual([]);
+      stores.view.find();
+      expect(await screen.findByRole('textbox', { name: 'Find in diff' })).toHaveValue('fifty');
+    });
+  });
 });

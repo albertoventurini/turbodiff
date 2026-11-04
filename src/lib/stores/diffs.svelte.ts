@@ -121,6 +121,20 @@ export class DiffStore {
     }
   }
 
+  /**
+   * Loads the diffs of every file in `paths` that has none yet, a few at a
+   * time, for find in page.
+   */
+  async loadAll(paths: readonly string[], concurrency = 4): Promise<void> {
+    const queue = paths.filter((path) => !this.#states.has(path));
+    const worker = async () => {
+      for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
+        await this.load(path);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
+  }
+
   /** Reveals again the unchanged lines that were expanded before a refresh. */
   async #reveal(path: string, lines: Iterable<number>): Promise<void> {
     const state = this.#states.get(path);
