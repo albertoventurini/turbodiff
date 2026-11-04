@@ -10,6 +10,7 @@ publish.workspace = true
 serde.workspace = true
 specta.workspace = true
 thiserror = "2.0.21"
+imara-diff = "0.2.0"
 # Default features are off so that write-capable modules (checkout, merge, notes,
 # credentials) aren't compiled in. See TECH.md §8.
 gix = { version = "0.90.0", default-features = false, features = [
