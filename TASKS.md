@@ -31,18 +31,18 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
   - paginated list from `HEAD`,
   - `search_commits` by message,
   - `resolve_commit_prefix` for SHAs (TECH §4.2).
-- [ ] Resolve a comparison:
+- [x] Resolve a comparison:
   - work tree or commit on the compare side,
   - two-dot or three-dot, using the merge base,
   - fall back when there's no merge base,
   - empty tree when there are no commits yet (TECH §4.3).
-- [ ] Changed files, commit vs commit: tree diff with rename tracking, statuses, mode changes and submodule changes (TECH §4.4).
-- [ ] Changed files, tree vs work tree:
+- [x] Changed files, commit vs commit: tree diff with rename tracking, statuses, mode changes and submodule changes (TECH §4.4).
+- [x] Changed files, tree vs work tree:
   - combine status results, untracked files and `.gitignore`,
   - compare each blob directly with the file on disk,
   - apply `.gitattributes` filters,
   - detect renames (TECH §4.4).
-- [ ] `+/−` counts for every file, using the active algorithm and whitespace setting.
+- [x] `+/−` counts for every file, using the active algorithm and whitespace setting.
 - [ ] Single-file diff:
   - binary and large-file checks,
   - UTF-8 decoding,
@@ -52,7 +52,7 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 - [ ] Hide whitespace: lines are compared with whitespace removed, the original text is kept for display, and whitespace-only files are reported.
 - [ ] Word-level ranges: pair deleted and inserted lines, tokenise, diff the tokens, skip pairs that are too different, return UTF-16 offsets.
 - [ ] `get_lines` for expanding context, backed by an LRU cache of file contents.
-- [ ] Comparison tests against `git diff --name-status -M` and `--numstat --diff-algorithm=histogram` for every fixture (TECH §10.1).
+- [x] Comparison tests against `git diff --name-status -M` and `--numstat --diff-algorithm=histogram` for every fixture (TECH §10.1).
 
 ## M2 — IPC and app services
 

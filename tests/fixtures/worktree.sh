@@ -11,6 +11,8 @@ lines "deleted" 5 > deleted.txt
 lines "staged-deleted" 5 > staged-deleted.txt
 mkdir src
 lines "fn" 30 > src/lib.rs
+lines "indent" 4 > whitespace.txt
+lines "mixed" 4 > mixed-whitespace.txt
 git add -A
 commit "Initial commit"
 
@@ -36,6 +38,9 @@ mkdir -p newdir/sub
 lines "nested" 2 > newdir/sub/file.txt
 # Edits in a subfolder: one deleted line, two inserted.
 lines "fn" 30 | awk '$0 != "fn 10" { print } $0 == "fn 20" { print "fn 20a"; print "fn 20b" }' > src/lib.rs
+# Whitespace-only changes, and whitespace changes next to a real one.
+lines "indent" 4 | awk '{ print "    " $0 }' > whitespace.txt
+lines "mixed" 4 | awk '{ gsub(/ /, "\t"); print } END { print "mixed 5" }' > mixed-whitespace.txt
 # Ignored, by .gitignore and by info/exclude.
 mkdir build
 echo "artifact" > build/out.txt

@@ -28,7 +28,7 @@ This document explains *how* TurboDiff is built. It covers the stack, the archit
 | CI / release | **GitHub Actions** + **`tauri-action`** | Lint and tests on Linux and macOS; release builds when a version tag is pushed. |
 | macOS signing | **Deferred** | Unsigned builds until there's an Apple Developer account. |
 
-**Accepted trade-off of using gitoxide.** TurboDiff shows the same files, statuses, renames and changes as `git diff`. Hunk boundaries may occasionally differ, and rename detection may disagree in borderline cases where a file is about 50% similar. Function names after `@@` hunk headers are not shown in v1.
+**Accepted trade-off of using gitoxide.** TurboDiff shows the same files, statuses, renames and changes as `git diff`. Hunk boundaries may occasionally differ. Rename detection reimplements git's own similarity estimate and pairing (§4.4), so it agrees with `git diff -M` even near the 50% threshold. Function names after `@@` hunk headers are not shown in v1.
 
 ---
 
@@ -125,10 +125,12 @@ Repository access is a separate library crate, `turbodiff-repo`, in a Cargo work
 ### 4.3 Comparison model
 
 ```rust
-enum Side { WorkTree, Commit(ObjectId) }
+enum CompareSide { WorkTree, Commit { spec: String } }
 enum Mode { ThreeDot, TwoDot }
-struct Comparison { base: RefSpec, compare: RefSideSpec, mode: Mode, ignore_ws: bool }
+struct Comparison { base: String, compare: CompareSide, mode: Mode, ignore_whitespace: bool }
 ```
+
+`base` and `spec` are full ref names (`refs/heads/main`) or SHAs from the picker, or any revision from the CLI. They're resolved with gitoxide's `rev_parse` and peeled to a commit. One that doesn't resolve is `RefNotFound`. `Comparison::default()` is work tree vs `HEAD`, three-dot.
 
 The *left* side is always a tree:
 
@@ -139,21 +141,30 @@ The *left* side is always a tree:
 | work tree | TwoDot | tree of base |
 | work tree | ThreeDot | tree of `merge_base(base, HEAD)` |
 
-- When there's no merge base (unrelated histories), three-dot falls back to two-dot and the UI shows a notice.
-- When `HEAD` has no commits yet, the left side is the empty tree.
+- When there's no merge base (unrelated histories), three-dot falls back to two-dot, and the result has `no_merge_base` set so the UI shows a notice.
+- When `HEAD` has no commits yet, `HEAD` resolves to the empty tree (on either side), and there's no merge base to look for.
 
 ### 4.4 Listing changed files
 
-**Commit vs commit:** gitoxide's tree-to-tree diff with rename tracking switched on (default 50% similarity, as in git). Each change gets a status: `Added`, `Modified`, `Deleted`, `Renamed{from, similarity}`, `TypeChanged`, plus a mode change if there is one.
+**Commit vs commit:** gitoxide's tree-to-tree diff, with its own rename tracking off. Renames are found afterwards, as for the work tree. Each change gets a status: `Added`, `Modified`, `Deleted`, `Renamed{from, similarity}`, `TypeChanged` (between file, symlink and submodule), plus a mode change if there is one.
 
 **Tree vs work tree** (the default view):
 1. Use `gix` status to collect the paths that differ between the tree and the index, and between the index and the work tree. Add **untracked files** from the directory walk, which respects `.gitignore` and `info/exclude`.
 2. For the union of these paths, compare the **left tree's blob** with the **current file on disk** directly. This merges staged and unstaged changes into a single result, which is what `git diff HEAD` does.
-3. Run the rename tracker on the resulting adds and deletes, with untracked files counting as adds.
+3. Run rename detection on the resulting adds and deletes, with untracked files counting as adds.
 
-Work-tree content goes through the same **filters** git would apply (line-ending conversion, `ident`, and other `.gitattributes` filters), using gitoxide's filter pipeline. That way, a file that is only "changed" because of line endings doesn't show up.
+Status runs with its own rename tracking off and lists untracked files one by one, not as collapsed folders. A submodule's new side is the commit its checkout's `HEAD` points to. One that isn't checked out counts as unchanged. With `core.fileMode` off, the executable bit comes from the index.
 
-**Line counts** (`+N −M`) are computed for every file while building the list, with the active algorithm and whitespace setting, so the sidebar totals are always accurate. Files above the large-file threshold (§4.5) get their counts but not their diff, until the user clicks "Load diff".
+Work-tree content goes through the same **filters** git would apply (line-ending conversion and `ident` from `.gitattributes`), using gitoxide's filter pipeline. That way, a file that is only "changed" because of line endings doesn't show up. **External filter drivers** (`filter.<name>.clean`, `.process`, such as Git LFS) **never run**: they're removed from the in-memory configuration when the repository is opened, because a driver can write into `.git` (LFS stores objects there). Files that use one are compared as they are on disk, so LFS files show as changed pointer text.
+
+**Renames** follow git's algorithm (`diffcore-rename.c`, `diffcore-delta.c`), not gitoxide's rename tracker, so results agree with `git diff -M`:
+1. identical content first, preferring a source with the same file name,
+2. then files whose name is unique among the remaining sources and destinations, if at least 75% similar,
+3. then every remaining pair, best score first, each source used once, at 50% or more.
+
+Similarity is git's estimate: content is cut into spans at each newline or every 64 bytes (a CR before a LF is skipped in text), the bytes of matching spans are counted, and the count is divided by the larger size. Only regular files take part in inexact matching. Above 1,000 × 1,000 candidates, only identical and same-name renames are found, as with git's default `diff.renameLimit`.
+
+**Line counts** (`+N −M`) are computed for every file while building the list, with `imara-diff`, the active algorithm and whitespace setting, so the sidebar totals are always accurate. They match `git diff --numstat` with the same algorithm. Binary files have no counts. A submodule counts as git shows it, one `Subproject commit` line per side. With hide whitespace on, files whose only changes are whitespace stay in the list with `+0 −0` (git leaves them out), so the UI can show "Whitespace-only changes". Files above the large-file threshold (§4.5) get their counts but not their diff, until the user clicks "Load diff".
 
 ### 4.5 Diffing one file
 
@@ -282,12 +293,13 @@ These are Svelte rune stores, one set per window:
 The PRD requires that TurboDiff never modifies the repository (PRD §8, §10). This is guaranteed by how the code is built:
 
 - Only the `turbodiff-repo` crate imports `gix`. `src-tauri` has no `gix` dependency.
+- External filter drivers never run (§4.4).
 - `gix` is built with **default features off**, enabling only what reading needs (`revision`, `status` and what they pull in). Write-capable modules such as checkout (`worktree-mutation`), `merge`, `notes` and `credentials` aren't compiled in.
-- `clippy.toml`, at the workspace root so it applies to every crate, uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes, config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, so calling one fails the build. A configured path that no longer resolves only makes clippy print a warning ("does not refer to a reachable function"), which `-D warnings` doesn't turn into an error, so CI also fails when that text appears in clippy's output.
+- `clippy.toml`, at the workspace root so it applies to every crate, uses **`disallowed-methods`** to block gitoxide's write APIs: index writes, ref edits, object writes (including `filter::Pipeline::worktree_file_to_object`, which writes a blob as a side effect), config writes and lock acquisition. The paths come from the `gix` version in `Cargo.lock` and must be checked again when `gix` is upgraded. CI runs clippy with warnings treated as errors, so calling one fails the build. A configured path that no longer resolves only makes clippy print a warning ("does not refer to a reachable function"), which `-D warnings` doesn't turn into an error, so CI also fails when that text appears in clippy's output.
 - Status is computed **without refreshing the index on disk.** File timestamp information stays in memory and is never written back.
 - Tauri **capabilities** give the webview no filesystem access. It can only call the commands listed in §5. Our commands are declared in the app manifest (`build.rs`), so each one needs its `allow-*` permission in `capabilities/default.json`, and no core or plugin permissions are granted beyond what the frontend actually uses. The CSP allows only the app's own resources.
 
-v1 has no automated before-and-after check of `.git`, by choice. Before each release, the PRD's read-only criterion is checked manually: run the app against a repository, then compare `git status`, the reflog and the checksum of `.git/index` before and after.
+A `turbodiff-repo` test (`tests/read_only.rs`) runs every repository operation on the fixtures and checks that no file in `.git` or the work tree changed, timestamps included. The running app has no automated before-and-after check, by choice. Before each release, the PRD's read-only criterion is checked manually: run the app against a repository, then compare `git status`, the reflog and the checksum of `.git/index` before and after.
 
 ---
 
@@ -317,7 +329,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
   - three-dot vs two-dot where base has moved on (the `billing.py` example in the PRD),
   - unrelated histories (no merge base),
   - branches (local and remote-tracking), lightweight and annotated tags, and a long history for paging and searching commits.
-- **Comparison with git:** for each fixture and comparison, TurboDiff's file list is checked against `git diff --name-status -M` and `git diff --numstat --diff-algorithm=histogram`. Paths, statuses, rename pairs and `+/−` counts must match. Hunk boundaries are not compared, as accepted in §1. Known borderline rename cases are marked as allowed differences.
+- **Comparison with git:** for each fixture and comparison, TurboDiff's file list is checked against `git diff --name-status -M` and `git diff --numstat --diff-algorithm=histogram`. Paths, statuses, rename pairs and similarities, and `+/−` counts must match. Hunk boundaries are not compared, as accepted in §1. Work-tree comparisons run git on a copy of the fixture with everything staged (`git add -A`, then `git diff --cached`), since that's what TurboDiff's work-tree view shows. Myers counts and hide whitespace (`git diff -w`) are compared too. Known differences are listed in `ALLOWED_DIFFERENCES` in `tests/changes.rs`, and the test checks that each one still happens. There's one: a file that isn't valid UTF-8 is binary for TurboDiff (PRD §8), while git counts its lines.
 
 ### 10.2 Frontend: component tests (Vitest + `@testing-library/svelte`)
 
@@ -359,9 +371,9 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 | Risk / question | Mitigation |
 |---|---|
 | gitoxide's status or filter handling misses an unusual repository setup (LFS, textconv, sparse checkout, submodule edge cases) | Fixture tests for the common cases. Show a clear "unsupported" notice instead of a wrong diff. Report problems upstream. |
-| Rename detection differs from git in borderline cases | Accepted (§1). Use the same 50% threshold. |
+| Rename detection differs from git in borderline cases | Reimplements git's similarity estimate and pairing (§4.4). Fixtures just above and below 50% are compared with git. |
 | WebKitGTK performance with huge diffs | Row-level virtualisation. Test on Linux first. |
 | Size of Shiki grammars | Load grammars only when needed. Bundle only common languages and fetch the rest on demand from local assets. |
-| Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Unit tests against `git diff -w` outputs. |
+| Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Counts are compared with `git diff -w --numstat` on a fixture. |
 | Commits tab: `HEAD` only vs all branches | PRD open question 2. The API supports both. Default to `HEAD`. |
 | Large-diff thresholds | PRD open question 1. Defined as constants, tuned against real repositories. |
