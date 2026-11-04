@@ -79,7 +79,7 @@ turbodiff/
 │   │   ├── stores/         # session, settings, selection (runes)
 │   │   ├── components/     # Toolbar, RefPicker, FileTree, DiffList, …
 │   │   ├── diff/           # row model, split/inline layout, virtual list
-│   │   ├── highlight/      # Shiki worker + client
+│   │   ├── highlight/      # Shiki worker, client, languages
 │   │   └── theme/          # Primer token mapping, mode switching
 │   └── styles/             # global.css, themes.css (generated, §6)
 ├── scripts/                # build-tokens.js (§6)
@@ -281,6 +281,8 @@ These are Svelte rune stores, one set per window:
 - `session`: repository info, the comparison, the `ChangeSet`, `generation`, loading and error state, and a notice for failures that leave the window as it was (`open-failed`). Hide whitespace lives here, as part of the `Comparison`.
 - `view`: selected file, the file at the top of the all-files view (`current`, which the sidebar marks; M5's diff list sets it), tree or flat file list, diff style (inline or split), collapsed files and whether the sidebar is collapsed. The tree or flat choice isn't saved (PRD §6.11).
 - `diffs` (`DiffStore`, owned by `DiffList` rather than shared through context): each file's loaded diff and the unchanged lines revealed by expanding context, keyed by path. It's emptied when the `ChangeSet` or the context-lines or algorithm settings change, since every diff depends on them.
+- `highlights` (`HighlightStore`, also owned by `DiffList`): syntax highlighting tokens by path and Shiki theme (§7.4), emptied when the `ChangeSet` changes.
+- `system` (`SystemMode`): whether the OS is in dark mode, shared through context so `DiffList` can pick the Shiki theme for the current mode.
 - `settings`: shared with every window through the `settings-changed` event.
 - `recent`: the recent repositories for the welcome screen, following `recent-changed`.
 
@@ -315,10 +317,12 @@ The stores are classes in `src/lib/stores/`, created by `App.svelte` and handed 
 
 ### 7.4 Syntax highlighting
 
-- Shiki runs in a **Web Worker** using its JavaScript regex engine, so no WASM is needed. Each language grammar is loaded only when a file in that language first appears.
-- Shiki highlights **complete old and new file contents** when they're available, rather than isolated lines. This keeps multi-line constructs, like block comments and strings, correct. The worker returns tokens for each line, and the row renderer combines them with the word-level ranges.
-- Highlighting is **skipped** for files over the large-file threshold and for unknown languages, which are shown as plain text. If the worker fails, plain text is shown. Highlighting never blocks the first view of a diff.
-- The worker caches tokens per `(blob id or path+generation, theme)`.
+- Shiki runs in a **Web Worker** (`src/lib/highlight/highlight.worker.ts`) using its JavaScript regex engine, so no WASM is needed. Only `shiki/core` and the engine are bundled with the worker. The worker is built as an ES module (`worker.format: 'es'` in `vite.config.ts`), so it can load grammars as separate chunks; the CSP's `default-src 'self'` covers it.
+- **Languages** are a curated list of about 50 common ones in `src/lib/highlight/languages.ts`. `languageFor(path)` picks one from a few whole file names (`Dockerfile`, `Makefile`, `CMakeLists.txt`, `Cargo.lock`, …) or the extension, ignoring case. Each grammar is its own chunk, loaded the first time a file in that language is highlighted. Files in other languages are plain text.
+- Shiki highlights **complete old and new file contents**, rather than isolated lines, so multi-line constructs like block comments and strings are right. The text comes from `get_lines(path, side, 1, lineCount)`, which the backend serves from its content cache: the old side only when the file has deletions, the new side whenever it has lines. Deleted lines take their tokens from the old side; added and unchanged lines from the new side (with hide whitespace on, unchanged lines show the new text). In split view, an unchanged line's left cell uses the right cell's line number for this.
+- The worker returns each line as `[end, style]` runs with a per-file table of inline styles (colour, italic, bold). Runs in the theme's default foreground get no style, so the diff's own Primer colours apply to them. `spans` in `diffRows.ts` combines the runs with the word-level ranges; highlighting that runs past the end of a line is dropped for that line. Syntax colours come from Shiki's GitHub themes as data and are applied as inline styles, so no colour literals appear in the source.
+- Highlighting is **skipped** for files with more than `LARGE_DIFF_LINES` changed lines, for a side longer than `LARGE_FILE_BYTES` (500,000 UTF-16 units, which also catches files shown with "Load diff"), and for unknown languages. Lines over 1,000 characters stay plain, and Shiki gives up on a line after 500 ms. If the worker can't start or fails, it's stopped and everything is plain text from then on; a file that fails to highlight on its own stays plain. Rows render plain text first and pick up colours when they arrive, without changing height, so highlighting never blocks the first view of a diff.
+- **Cache:** `HighlightStore` (`src/lib/stores/highlights.svelte.ts`, owned by `DiffList` beside `DiffStore`) keeps tokens by path and Shiki theme, and is cleared whenever the `ChangeSet` changes, which stands in for the generation. Switching between light and dark keeps both, so switching back is instant. Files are highlighted when their diff is loaded and they're within the load-ahead window (§7.3).
 
 ---
 
@@ -370,6 +374,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 - `FileTree`: compacting single-child folders, switching between tree and flat, selecting and deselecting files.
 - `RefPicker`: switching tabs, filtering, pinned Working tree, SHA lookup results.
 - Building rows for diffs: inline and split alignment, filler cells, word-level ranges, expand controls.
+- Syntax highlighting: picking languages, tokenizing with the real Shiki (multi-line comments, both themes, long lines), combining tokens with word-level ranges, the highlight store (which sides it fetches, what it skips, stale generations, the cache) and the worker client's failure handling. The worker itself isn't started in tests: jsdom has none, and the diff list tests replace the client.
 - Theme and mode switching, the session, settings and recent stores (including discarding stale generations), the welcome screen, the layout and the empty and error states.
 - `api.ts` is mocked with fixed responses.
 
@@ -407,7 +412,7 @@ End-to-end tests of the whole app, the read-only before-and-after check, and per
 | gitoxide's status or filter handling misses an unusual repository setup (LFS, textconv, sparse checkout, submodule edge cases) | Fixture tests for the common cases. Show a clear "unsupported" notice instead of a wrong diff. Report problems upstream. |
 | Rename detection differs from git in borderline cases | Reimplements git's similarity estimate and pairing (§4.4). Fixtures just above and below 50% are compared with git. |
 | WebKitGTK performance with huge diffs | Row-level virtualisation. Test on Linux first. |
-| Size of Shiki grammars | Load grammars only when needed. Bundle only common languages and fetch the rest on demand from local assets. |
+| Size of Shiki grammars | A curated list of about 50 common languages (§7.4), each a chunk loaded only when needed: about 3 MB before Tauri compresses the assets, C++ the largest at 0.8 MB. Other languages are plain text. |
 | Hide-whitespace semantics vs `git diff -w` | Same rule (ignore all whitespace when comparing lines). Counts are compared with `git diff -w --numstat` on a fixture. |
 | Find in page (`Mod+F`, PRD §6.10) only finds rows the virtual list has rendered, because the rest of the diff isn't in the DOM | Known since M5. Options: a search of our own over the loaded diffs that scrolls to matches, or rendering more rows while the find bar is open. To be decided before release (M9). |
 | Large-diff thresholds | PRD open question 1. Defined as constants. Checked in M5 on this repository (lock files and the generated `themes.css` start collapsed, hand-written files don't), with no reason found to change them; to be revisited in the M9 performance pass. |

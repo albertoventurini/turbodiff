@@ -107,9 +107,9 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 
 ## M6 — Syntax highlighting
 
-- [ ] A Shiki Web Worker using the JavaScript regex engine, with GitHub light and dark themes and language grammars loaded on demand (TECH §7.4).
-- [ ] Highlight complete files and combine the tokens with word-level ranges per line.
-- [ ] Skip highlighting for large files and unknown languages. Fall back to plain text if the worker fails. Cache tokens.
+- [x] A Shiki Web Worker using the JavaScript regex engine, with GitHub light and dark themes and language grammars loaded on demand (TECH §7.4).
+- [x] Highlight complete files and combine the tokens with word-level ranges per line.
+- [x] Skip highlighting for large files and unknown languages. Fall back to plain text if the worker fails. Cache tokens.
 
 ## M7 — Live refresh
 
