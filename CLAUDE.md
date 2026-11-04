@@ -60,9 +60,21 @@ Cargo commands run from the repository root, which holds the workspace `Cargo.to
 - Tests that compare with `git diff` check paths, statuses, renames and `+/−` counts. They do not compare hunk boundaries (TECH.md §1).
 - Svelte components get Vitest + Testing Library tests, with `api.ts` mocked.
 - Run lint and all tests before calling a task done.
+- For UI changes, also check the result in the real app, in light and dark mode. [docs/checking-the-ui.md](docs/checking-the-ui.md) explains how.
+
+## Working on a milestone
+
+A request like "Let's work on M6" means: implement every task of that milestone in TASKS.md.
+
+- Before writing code, read PRD.md, TECH.md and TASKS.md, then the code and `git log` from earlier milestones.
+- Work on a new branch named after the milestone (for example `m6-syntax-highlighting`), cut from `main`.
+- Keep going until the milestone is done. Ask only for decisions that the documents and sensible defaults can't settle: scope, UX the PRD leaves open, or documents that contradict each other.
+- Work in this session only. Don't start other sessions.
+- Never merge into `main`, push, tag or publish anything without asking first. When the milestone is done, report what was built, the decisions recorded in TECH.md and anything you couldn't verify, then ask whether to merge.
 
 ## Conventions
 
 - Commit messages are in the imperative mood ("Add file tree component"), with a short subject and a body that explains why when it isn't obvious.
 - Rust follows `rustfmt` and `clippy` defaults; TypeScript and Svelte follow Prettier and ESLint.
 - Match the style of the surrounding code: naming, comment density, idioms.
+- Use current stable versions of dependencies. pnpm 12 refuses releases that are too new. When it does, pick an older version. Never add `minimumReleaseAgeExclude` to get around it, and remove it if pnpm adds it by itself.
