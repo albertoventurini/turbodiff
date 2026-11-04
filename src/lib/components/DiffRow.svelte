@@ -47,16 +47,17 @@
 
 {#snippet code(kind: LineKind, text: string, words: Cell['words'], noNewline: boolean)}
   <span class="code" data-marker={MARKERS[kind]}>
-    <span class="content">
-      {#each segments(text, words) as part, i (i)}
-        {#if part.changed}<span class="word">{part.text}</span>{:else}{part.text}{/if}
-      {/each}
-      {#if noNewline}
-        <span class="eof" title="No newline at end of file" aria-label="No newline at end of file">
-          <Icon name="no-entry" />
-        </span>
-      {/if}
-    </span>
+    <span class="clip"
+      ><span class="content"
+        >{#each segments(text, words) as part, i (i)}{#if part.changed}<span class="word"
+              >{part.text}</span
+            >{:else}{part.text}{/if}{/each}{#if noNewline}<span
+            class="eof"
+            title="No newline at end of file"
+            aria-label="No newline at end of file"><Icon name="no-entry" /></span
+          >{/if}</span
+      ></span
+    >
   </span>
 {/snippet}
 
@@ -215,6 +216,12 @@
     position: absolute;
     left: var(--base-size-8);
     user-select: none;
+  }
+
+  /* Lines scrolled sideways don't cover the marker. */
+  .clip {
+    display: block;
+    overflow: hidden;
   }
 
   .content {

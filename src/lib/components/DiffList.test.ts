@@ -87,7 +87,9 @@ describe('DiffList', () => {
     setup([entry('a.txt')]);
     const deleted = (await screen.findByText('old', { selector: '.word' })).closest('.line')!;
     expect(deleted.querySelector('.code')).toHaveAttribute('data-marker', '−');
-    expect(deleted.querySelector('.code')).toHaveTextContent(/^old fifty$/);
+    // Exactly the line, so copying adds nothing.
+    expect(deleted.querySelector('.code')!.textContent!.trim()).toBe('old fifty');
+    expect(deleted.querySelector('.content')!.textContent).toBe('old fifty');
     expect([...deleted.querySelectorAll('.num')].map((num) => num.getAttribute('data-no'))).toEqual(
       ['50', ''],
     );

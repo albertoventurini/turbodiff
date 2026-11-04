@@ -279,10 +279,7 @@
     if (!scroller || wrap) return;
     let most = 0;
     for (const content of scroller.querySelectorAll<HTMLElement>('.row .content')) {
-      const cell = content.parentElement!;
-      const style = getComputedStyle(cell);
-      const room =
-        cell.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const room = content.parentElement!.clientWidth;
       most = Math.max(most, content.scrollWidth - room, extent.chars * charWidth - room);
     }
     overflow = Math.max(0, Math.ceil(most));
@@ -442,8 +439,10 @@
     user-select: none;
   }
 
+  /* Tall enough to show an overlay scrollbar (GTK, macOS) on top. */
   .hscroll {
     flex: none;
+    min-height: var(--base-size-12);
     overflow: auto hidden;
     border-top: var(--borderWidth-thin) solid var(--borderColor-muted);
   }

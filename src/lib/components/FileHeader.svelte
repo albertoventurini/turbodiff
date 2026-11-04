@@ -57,8 +57,8 @@
     {#if file.binary}
       <span class="bin">bin</span>
     {:else}
-      <span class="additions">+{file.additions}</span>
-      <span class="deletions">−{file.deletions}</span>
+      {#if file.additions > 0}<span class="additions">+{file.additions}</span>{/if}
+      {#if file.deletions > 0}<span class="deletions">−{file.deletions}</span>{/if}
     {/if}
   </span>
 </div>
