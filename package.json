@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "format": "prettier --write ."
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
