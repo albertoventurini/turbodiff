@@ -148,6 +148,25 @@ export function revealLines(
   return new Map([...context, ...lines.map((text, i) => [start + i, text] as const)]);
 }
 
+/**
+ * The runs of `lines` (new-side line numbers revealed in an earlier version of
+ * a file) that are still hidden unchanged lines in `diff`, as `[start, end]`
+ * ranges. Used to reveal them again after a refresh (PRD §6.9).
+ */
+export function hiddenRuns(lines: Iterable<number>, diff: FileDiff): [number, number][] {
+  if (diff.kind !== 'text') return [];
+  const shown = (no: number) =>
+    diff.hunks.some((hunk) => no >= hunk.newStart && no < hunk.newStart + hunk.newLines);
+  const runs: [number, number][] = [];
+  for (const no of [...lines].sort((a, b) => a - b)) {
+    if (no < 1 || no > diff.newLineCount || shown(no)) continue;
+    const last = runs.at(-1);
+    if (last && last[1] === no - 1) last[1] = no;
+    else runs.push([no, no]);
+  }
+  return runs;
+}
+
 /** The hidden lines that expanding `gap` towards `direction` reveals. */
 export function expandRange(gap: Gap, direction: ExpandDirection): [number, number] {
   switch (direction) {

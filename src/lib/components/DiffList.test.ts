@@ -168,6 +168,46 @@ describe('DiffList', () => {
     expect(screen.getByRole('button', { name: 'Expand down' })).toBeInTheDocument();
   });
 
+  it('keeps loaded diffs and expanded lines across a refresh', async () => {
+    const files = [entry('a.txt'), entry('b.txt')];
+    const stores = setup(files);
+    await vi.waitFor(() => expect(screen.getAllByText('line 49')).toHaveLength(2));
+    api.getLines.mockResolvedValue(
+      versioned(
+        Array.from({ length: 20 }, (_, i) => `line ${29 + i}`),
+        1,
+      ),
+    );
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Expand up' })[0]);
+    expect(await screen.findByText('line 29')).toBeInTheDocument();
+    api.getFileDiff.mockClear();
+
+    // b.txt changed on disk: its new diff replaces the old one, which stays
+    // on screen until then.
+    const changed: FileDiff = {
+      ...middle,
+      hunks: [
+        {
+          ...middle.hunks[0],
+          lines: middle.hunks[0].lines.map((line) =>
+            line.kind === 'add' ? { ...line, text: 'newer fifty' } : line,
+          ),
+        },
+      ],
+    };
+    api.getFileDiff.mockResolvedValue(versioned(changed, 2));
+    stores.session.accept(2);
+    stores.session.changes = changeSet({ generation: 2, files });
+    stores.session.refresh = { generation: 2, filesChanged: ['b.txt'] };
+    expect(card('b.txt').some((row) => row.textContent?.includes('new fifty'))).toBe(true);
+    await vi.waitFor(() =>
+      expect(card('b.txt').some((row) => row.textContent?.includes('newer fifty'))).toBe(true),
+    );
+    expect(api.getFileDiff).toHaveBeenCalledTimes(1);
+    expect(api.getFileDiff).toHaveBeenCalledWith('b.txt', false);
+    expect(screen.getByText('line 29')).toBeInTheDocument();
+  });
+
   it('loads a large diff on request', async () => {
     setup([entry('big.txt', { additions: 5000 })], {
       'big.txt': { kind: 'tooLarge', additions: 5000, deletions: 0 },

@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { refLabel } from '../refs';
   import { getStores } from '../stores/context';
   import { SIDEBAR_WIDTHS } from '../stores/settings.svelte';
   import ErrorNotice from './ErrorNotice.svelte';
   import MainPane from './MainPane.svelte';
+  import Notice from './Notice.svelte';
   import Sidebar from './Sidebar.svelte';
   import Toolbar from './Toolbar.svelte';
 
@@ -15,12 +17,13 @@
   let dragWidth = $state<number | null>(null);
   const width = $derived(dragWidth ?? settings.value.sidebarWidth);
 
-  // A file that's no longer in the list can't stay selected.
+  // A file that's no longer in the list can't stay selected, or collapsed.
   $effect(() => {
     const files = session.changes?.files;
-    if (view.selected !== null && files && !files.some((file) => file.path === view.selected)) {
-      view.selected = null;
-    }
+    if (!files) return;
+    const paths = new Set(files.map((file) => file.path));
+    if (view.selected !== null && !paths.has(view.selected)) view.selected = null;
+    for (const path of view.collapsed) if (!paths.has(path)) view.collapsed.delete(path);
   });
 
   /** `Esc` goes back to all files (PRD §6.10), unless a popup used it to close. */
@@ -68,6 +71,14 @@
   {#if session.notice}
     <div class="notice">
       <ErrorNotice error={session.notice} ondismiss={() => (session.notice = null)} />
+    </div>
+  {/if}
+  {#if session.fallback}
+    <div class="notice">
+      <Notice ondismiss={() => (session.fallback = null)}>
+        <strong><code>{refLabel(session.fallback)}</code> no longer exists.</strong>
+        Showing the working tree compared with HEAD.
+      </Notice>
     </div>
   {/if}
   <div class="body">

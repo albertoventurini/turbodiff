@@ -2,7 +2,7 @@ import { flushSync } from 'svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../test/fakeApi';
 import { ApiError, changeSet, emit } from '../test/fakeApi';
-import type { ChangeSet, Comparison, RepoOpened } from '../types';
+import type { ChangeSet, Comparison, RepoChanged, RepoOpened } from '../types';
 import { defaultComparison, SessionStore } from './session.svelte';
 
 vi.mock('../api', () => import('../test/fakeApi'));
@@ -150,5 +150,80 @@ describe('SessionStore', () => {
     expect(session.current({ generation: 2, value: 'a' })).toBe('a');
     expect(session.current({ generation: 1, value: 'b' })).toBeNull();
     expect(session.current({ generation: 2, value: 'c' })).toBe('c');
+  });
+
+  describe('live refresh', () => {
+    const head = { branch: 'main', commit: 'def' };
+
+    function refreshed(generation: number, overrides: Partial<RepoChanged> = {}): RepoChanged {
+      return {
+        comparison: defaultComparison(),
+        changes: changeSet({ generation }),
+        filesChanged: ['a.txt'],
+        head,
+        ...overrides,
+      };
+    }
+
+    /** A session showing `opened`, listed at generation 1. */
+    async function listed() {
+      api.getWindowState.mockResolvedValue({ repo: opened, error: null });
+      api.setComparison.mockResolvedValue(changeSet({ generation: 1 }));
+      const session = new SessionStore();
+      const stop = session.start();
+      await vi.waitFor(() => expect(session.changes).not.toBeNull());
+      return { session, stop };
+    }
+
+    it('applies repo-changed as a refresh of the list', async () => {
+      const { session, stop } = await listed();
+      const listing = session.listing;
+      emit('repoChanged', refreshed(2));
+      expect(session.changes?.generation).toBe(2);
+      expect(session.generation).toBe(2);
+      expect(session.refresh).toEqual({ generation: 2, filesChanged: ['a.txt'] });
+      expect(session.listing).toBe(listing);
+      expect(session.repo?.head).toEqual(head);
+      stop();
+    });
+
+    it('ignores a refresh for an older generation or another comparison', async () => {
+      const { session, stop } = await listed();
+      emit('repoChanged', refreshed(3));
+      emit('repoChanged', refreshed(2));
+      expect(session.changes?.generation).toBe(3);
+      emit('repoChanged', refreshed(4, { comparison: feature }));
+      expect(session.changes?.generation).toBe(3);
+      stop();
+    });
+
+    it('takes a refresh that replaced the pending listing as its result', async () => {
+      const { session, stop } = await listed();
+      const pending = deferred<ChangeSet>();
+      api.setComparison.mockReturnValueOnce(pending.promise);
+      const listing = session.listing;
+      const compare = session.compare(defaultComparison());
+      emit('repoChanged', refreshed(3));
+      expect(session.loading).toBe(false);
+      expect(session.refresh).toBeNull();
+      expect(session.listing).toBe(listing + 1);
+      pending.reject(new ApiError({ kind: 'cancelled' }));
+      await compare;
+      expect(session.changes?.generation).toBe(3);
+      expect(session.error).toBeNull();
+      stop();
+    });
+
+    it('falls back to work tree vs HEAD when a ref disappears', async () => {
+      const { session, stop } = await listed();
+      await session.compare({ ...feature, ignoreWhitespace: true });
+      emit('comparisonInvalid', { name: 'refs/heads/feature' });
+      expect(api.setComparison).toHaveBeenLastCalledWith(defaultComparison(true));
+      expect(session.fallback).toBe('refs/heads/feature');
+      // Choosing another comparison clears the notice.
+      await session.compare(feature);
+      expect(session.fallback).toBeNull();
+      stop();
+    });
   });
 });

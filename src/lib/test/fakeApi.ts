@@ -5,10 +5,12 @@ import type {
   AppError,
   ChangeSet,
   CommitItem,
+  ComparisonInvalid,
   FileDiff,
   OpenFailed,
   RecentRepo,
   RefItem,
+  RepoChanged,
   RepoOpened,
   Settings,
   Side,
@@ -26,6 +28,8 @@ export class ApiError extends Error {
 type Listeners = {
   repoOpened: ((e: RepoOpened) => void)[];
   openFailed: ((e: OpenFailed) => void)[];
+  repoChanged: ((e: RepoChanged) => void)[];
+  comparisonInvalid: ((e: ComparisonInvalid) => void)[];
   settingsChanged: ((s: Settings) => void)[];
   recentChanged: ((r: RecentRepo[]) => void)[];
   systemTheme: ((dark: boolean) => void)[];
@@ -34,6 +38,8 @@ type Listeners = {
 const listeners: Listeners = {
   repoOpened: [],
   openFailed: [],
+  repoChanged: [],
+  comparisonInvalid: [],
   settingsChanged: [],
   recentChanged: [],
   systemTheme: [],
@@ -107,6 +113,8 @@ export const removeRecent = vi.fn<(path: string) => Promise<RecentRepo[]>>(() =>
 
 export const onRepoOpened = listen('repoOpened');
 export const onOpenFailed = listen('openFailed');
+export const onRepoChanged = listen('repoChanged');
+export const onComparisonInvalid = listen('comparisonInvalid');
 export const onSettingsChanged = listen('settingsChanged');
 export const onRecentChanged = listen('recentChanged');
 export const onSystemThemeChanged = listen('systemTheme');

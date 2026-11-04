@@ -156,4 +156,21 @@ describe('HighlightStore', () => {
     await new Promise((resolve) => setTimeout(resolve));
     expect(store.line('b.ts', 'github-light', 'new', 1)).toBeUndefined();
   });
+
+  it('highlights a refreshed file again, and keeps the rest', async () => {
+    const { store, highlight } = setup();
+    store.request(entry('a.ts'), diff, 'github-light');
+    store.request(entry('b.ts'), diff, 'github-light');
+    await vi.waitFor(() => expect(store.line('b.ts', 'github-light', 'new', 1)).toBeDefined());
+    highlight.mockClear();
+
+    // The same diff again is a no-op.
+    store.request(entry('b.ts'), diff, 'github-light');
+    // A new diff of a.ts after a refresh: its old tokens go at once.
+    store.request(entry('a.ts'), { ...diff }, 'github-light');
+    expect(store.line('a.ts', 'github-light', 'new', 1)).toBeUndefined();
+    await vi.waitFor(() => expect(store.line('a.ts', 'github-light', 'new', 1)).toBeDefined());
+    expect(highlight).toHaveBeenCalledTimes(2);
+    expect(store.line('b.ts', 'github-light', 'new', 1)).toBeDefined();
+  });
 });

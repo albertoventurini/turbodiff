@@ -9,10 +9,12 @@ import {
   type ChangeSet,
   type CommitItem,
   type Comparison,
+  type ComparisonInvalid,
   type FileDiff,
   type OpenFailed,
   type RecentRepo,
   type RefItem,
+  type RepoChanged,
   type RepoOpened,
   type Settings,
   type SettingsPatch,
@@ -116,6 +118,14 @@ export function onRepoOpened(cb: (event: RepoOpened) => void): Promise<UnlistenF
 
 export function onOpenFailed(cb: (event: OpenFailed) => void): Promise<UnlistenFn> {
   return events.openFailed(getCurrentWindow()).listen((e) => cb(e.payload));
+}
+
+export function onRepoChanged(cb: (event: RepoChanged) => void): Promise<UnlistenFn> {
+  return events.repoChanged(getCurrentWindow()).listen((e) => cb(e.payload));
+}
+
+export function onComparisonInvalid(cb: (event: ComparisonInvalid) => void): Promise<UnlistenFn> {
+  return events.comparisonInvalid(getCurrentWindow()).listen((e) => cb(e.payload));
 }
 
 export function onSettingsChanged(cb: (settings: Settings) => void): Promise<UnlistenFn> {

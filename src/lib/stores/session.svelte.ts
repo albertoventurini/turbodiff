@@ -3,11 +3,27 @@
 // latest one seen are discarded (TECH.md §5).
 import * as api from '../api';
 import { ApiError } from '../api';
-import type { AppError, ChangeSet, Comparison, RepoInfo, RepoOpened, Versioned } from '../types';
+import type {
+  AppError,
+  ChangeSet,
+  Comparison,
+  ComparisonInvalid,
+  RepoChanged,
+  RepoInfo,
+  RepoOpened,
+  Versioned,
+} from '../types';
 
 /** Work tree vs `HEAD`, three-dot (PRD §6.2). */
 export function defaultComparison(ignoreWhitespace = false): Comparison {
   return { base: 'HEAD', compare: { kind: 'workTree' }, mode: 'threeDot', ignoreWhitespace };
+}
+
+/** A refresh of the file list after the repository changed (PRD §6.9). */
+export type Refresh = { generation: number; filesChanged: string[] };
+
+function sameComparison(a: Comparison, b: Comparison): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function appError(err: unknown): AppError {
@@ -30,14 +46,28 @@ export class SessionStore {
   error = $state<AppError | null>(null);
   /** A failure that leaves the window as it was, such as opening a folder that isn't a repository. */
   notice = $state<AppError | null>(null);
+  /**
+   * Counts the file lists that replace the previous one outright, as opposed
+   * to refreshing it. Loaded diffs are kept only across refreshes.
+   */
+  listing = $state(0);
+  /** The latest refresh, while `changes` comes from it. */
+  refresh = $state<Refresh | null>(null);
+  /** The ref that disappeared, after falling back to work tree vs `HEAD`. */
+  fallback = $state<string | null>(null);
 
   #request = 0;
 
-  /** Loads what the window shows and follows `repo-opened` and `open-failed`. */
+  /**
+   * Loads what the window shows and follows `repo-opened`, `open-failed`,
+   * `repo-changed` and `comparison-invalid`.
+   */
   start(): () => void {
     const unlisteners = [
       api.onRepoOpened((event) => this.show(event)),
       api.onOpenFailed(({ error }) => (this.notice = error)),
+      api.onRepoChanged((event) => this.changed(event)),
+      api.onComparisonInvalid((event) => this.invalid(event)),
     ];
     void Promise.all(unlisteners)
       .then(() => api.getWindowState())
@@ -67,9 +97,10 @@ export class SessionStore {
     this.comparison = comparison;
     this.loading = true;
     this.error = null;
+    this.fallback = null;
     try {
       const changes = await api.setComparison(comparison);
-      if (this.accept(changes.generation)) this.changes = changes;
+      if (this.accept(changes.generation)) this.#list(changes);
     } catch (err) {
       const error = appError(err);
       // A newer request replaced this one.
@@ -79,6 +110,39 @@ export class SessionStore {
     } finally {
       if (request === this.#request) this.loading = false;
     }
+  }
+
+  /**
+   * Applies a refresh from the backend. While a comparison is still being
+   * listed, the refresh replaced that listing, so it counts as its result.
+   */
+  changed({ comparison, changes, filesChanged, head }: RepoChanged): void {
+    if (!this.repo || !sameComparison(comparison, this.comparison)) return;
+    if (!this.accept(changes.generation)) return;
+    this.repo = { ...this.repo, head };
+    if (this.changes && !this.loading) {
+      this.changes = changes;
+      this.refresh = { generation: changes.generation, filesChanged };
+    } else {
+      // The pending `compare` ends as cancelled.
+      this.#request++;
+      this.loading = false;
+      this.error = null;
+      this.#list(changes);
+    }
+  }
+
+  /** A ref in the comparison is gone: falls back to work tree vs `HEAD` (PRD §6.9). */
+  invalid({ name }: ComparisonInvalid): void {
+    if (!this.repo) return;
+    void this.resetComparison();
+    this.fallback = name;
+  }
+
+  #list(changes: ChangeSet): void {
+    this.changes = changes;
+    this.refresh = null;
+    this.listing++;
   }
 
   /** Goes back to work tree vs `HEAD`, keeping hide whitespace as it is. */

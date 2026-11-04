@@ -44,6 +44,9 @@ pub struct OpenFailed {
 #[derive(Debug, Clone, Serialize, specta::Type, Event)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoChanged {
+    /// The comparison that was refreshed. The window ignores the event if it
+    /// has asked for another one since.
+    pub comparison: Comparison,
     pub changes: ChangeSet,
     pub files_changed: Vec<String>,
     /// `HEAD` now, which moves on a commit or a branch switch.

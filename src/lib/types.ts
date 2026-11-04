@@ -249,6 +249,11 @@ export type RefKind = "localBranch" | "remoteBranch" | "tag";
  *  differ from the previous list, including ones that left it.
  */
 export type RepoChanged = {
+	/**
+	 *  The comparison that was refreshed. The window ignores the event if it
+	 *  has asked for another one since.
+	 */
+	comparison: Comparison,
 	changes: ChangeSet,
 	filesChanged: string[],
 	/**  `HEAD` now, which moves on a commit or a branch switch. */

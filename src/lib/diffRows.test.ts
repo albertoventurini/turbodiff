@@ -3,6 +3,7 @@ import {
   buildRows,
   estimateLines,
   expandRange,
+  hiddenRuns,
   hunkHeader,
   spans,
   type LoadedDiff,
@@ -500,5 +501,26 @@ describe('expandRange', () => {
     expect(expandRange(gap, 'down')).toEqual([10, 29]);
     expect(expandRange(gap, 'all')).toEqual([10, 60]);
     expect(expandRange({ start: 1, end: 5, oldOffset: 0 }, 'up')).toEqual([1, 5]);
+  });
+});
+
+describe('hiddenRuns', () => {
+  const diff: FileDiff = {
+    kind: 'text',
+    hunks: [{ oldStart: 4, oldLines: 2, newStart: 4, newLines: 3, lines: [] }],
+    oldLineCount: 9,
+    newLineCount: 10,
+    noNewlineAtEof: { old: false, new: false },
+  };
+
+  it('groups the lines outside hunks into runs', () => {
+    expect(hiddenRuns([9, 1, 2, 3, 4, 5, 8, 10, 11], diff)).toEqual([
+      [1, 3],
+      [8, 10],
+    ]);
+  });
+
+  it('has none for diffs without lines', () => {
+    expect(hiddenRuns([1, 2], { kind: 'whitespaceOnly' })).toEqual([]);
   });
 });

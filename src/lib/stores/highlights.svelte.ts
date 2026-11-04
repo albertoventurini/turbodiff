@@ -14,8 +14,11 @@ type Highlighted = Record<Side, Tokens | null>;
 
 export class HighlightStore {
   #files = new SvelteMap<string, Highlighted>();
-  /** The files asked for, highlighted or not, by the same key as `#files`. */
-  #requested = new SvelteMap<string, object>();
+  /**
+   * The diffs files were asked for with, highlighted or not, by the same key
+   * as `#files`. A refreshed file has a new diff, and is highlighted again.
+   */
+  #requested = new SvelteMap<string, { diff: FileDiff }>();
   #key: unknown[] = [];
 
   constructor(
@@ -38,10 +41,16 @@ export class HighlightStore {
    */
   request(file: FileEntry, diff: FileDiff, theme: string): void {
     const key = `${theme}\0${file.path}`;
-    if (this.#requested.has(key) || this.highlighter.broken || diff.kind !== 'text') return;
+    const previous = this.#requested.get(key);
+    if (previous?.diff === diff) return;
+    if (previous) {
+      this.#requested.delete(key);
+      this.#files.delete(key);
+    }
+    if (this.highlighter.broken || diff.kind !== 'text') return;
     const lang = languageFor(file.path);
     if (!lang || file.additions + file.deletions > LARGE_DIFF_LINES) return;
-    const request = {};
+    const request = { diff };
     this.#requested.set(key, request);
     // Deleted lines come from the old side; added and unchanged ones from the new.
     const sides: [Side, number][] = [

@@ -41,10 +41,16 @@
     return orderedFiles(all, view.fileTreeMode);
   });
 
+  // A new file list replaces every diff; a refresh only the changed ones
+  // (PRD §6.9).
   $effect.pre(() => {
     const { contextLines, diffAlgorithm } = settings.value;
-    diffs.sync(session.changes, contextLines, diffAlgorithm);
-    highlights.sync(session.changes);
+    diffs.sync(session.listing, contextLines, diffAlgorithm);
+    highlights.sync(session.listing);
+  });
+  $effect.pre(() => {
+    const refresh = session.refresh;
+    if (refresh) untrack(() => diffs.refresh(refresh, session.changes?.files ?? []));
   });
 
   const wrap = $derived(settings.value.lineWrapping);
@@ -175,7 +181,9 @@
     const to = rowAt(top + (LOAD_AHEAD + 1) * height);
     for (let i = from; i <= to && i < rows.length; i++) {
       const row = rows[i];
-      if (row.kind === 'placeholder') untrack(() => void diffs.load(row.file.path));
+      if (row.kind === 'placeholder' || diffs.isStale(row.file.path)) {
+        untrack(() => void diffs.load(row.file.path));
+      }
     }
   });
 
@@ -188,7 +196,8 @@
     const theme = shikiTheme;
     for (let i = from; i <= to; i++) {
       const loaded = diffs.get(files[i].path);
-      if (loaded && loaded !== 'failed') {
+      // A stale diff no longer matches the file it would be highlighted from.
+      if (loaded && loaded !== 'failed' && !loaded.stale) {
         untrack(() => highlights.request(files[i], loaded.diff, theme));
       }
     }

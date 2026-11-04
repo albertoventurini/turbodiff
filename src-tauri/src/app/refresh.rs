@@ -73,6 +73,7 @@ fn on_change(app: &AppHandle, label: &str, session: &Weak<Session>, trigger: Tri
             .and_then(|(changes, files_changed)| {
                 let head = session.repo().info()?.head;
                 Ok(RepoChanged {
+                    comparison: ticket.comparison.clone(),
                     changes,
                     files_changed,
                     head,

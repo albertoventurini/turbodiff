@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '../test/fakeApi';
 import { changeSet } from '../test/fakeApi';
@@ -73,5 +73,37 @@ describe('RepoView', () => {
         'This folder is not a git repository: /tmp',
       ),
     );
+  });
+
+  it('says which ref disappeared after falling back, until dismissed', async () => {
+    const stores = setup();
+    stores.session.fallback = 'refs/heads/feature';
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(
+      'feature no longer exists. Showing the working tree compared with HEAD.',
+    );
+    await fireEvent.click(within(notice).getByRole('button', { name: 'Dismiss' }));
+    expect(stores.session.fallback).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('forgets collapsed files that left the list', async () => {
+    const stores = setup();
+    const file = (path: string) => ({
+      path,
+      oldPath: null,
+      status: 'M' as const,
+      similarity: null,
+      additions: 1,
+      deletions: 0,
+      binary: false,
+      modeChange: null,
+      submodule: null,
+    });
+    stores.session.changes = changeSet({ files: [file('a.txt'), file('b.txt')] });
+    stores.view.collapsed.add('a.txt');
+    stores.view.collapsed.add('b.txt');
+    stores.session.changes = changeSet({ generation: 2, files: [file('b.txt')] });
+    await vi.waitFor(() => expect([...stores.view.collapsed]).toEqual(['b.txt']));
   });
 });
