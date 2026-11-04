@@ -16,3 +16,12 @@ specta = "=2.0.0-rc.26"
 # tauri-specta's Tauri 2 support has only been released as release candidates.
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 specta-typescript = "=0.0.13"
+# Default features are off so that write-capable modules (checkout, merge, notes,
+# credentials) aren't compiled in. See TECH.md §8.
+gix = { version = "0.90.0", default-features = false, features = [
+    "sha1",
+    "max-performance",
+    "revision",
+    "status",
+] }
+

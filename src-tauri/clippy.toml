@@ -1,0 +1,55 @@
+# TurboDiff must never modify a repository (PRD §8, TECH.md §8). These are the
+# gitoxide APIs that write the index, refs, objects or config, or take a lock
+# file. Paths are taken from gix 0.90.0; check them again when upgrading gix.
+# Don't silence this lint. If a method is needed, the design is wrong.
+disallowed-methods = [
+    # Index writes
+    { path = "gix::index::File::write", reason = "writes the index; TurboDiff is read-only" },
+    { path = "gix::index::File::write_to", reason = "serialises the index for writing; TurboDiff is read-only" },
+    { path = "gix::index::State::write_to", reason = "serialises the index for writing; TurboDiff is read-only" },
+    { path = "gix::status::Outcome::write_changes", reason = "writes refreshed stat data back to the index; TurboDiff is read-only" },
+
+    # Ref edits
+    { path = "gix::Repository::edit_reference", reason = "edits refs; TurboDiff is read-only" },
+    { path = "gix::Repository::edit_references", reason = "edits refs; TurboDiff is read-only" },
+    { path = "gix::Repository::edit_references_as", reason = "edits refs; TurboDiff is read-only" },
+    { path = "gix::Repository::reference", reason = "creates a ref; TurboDiff is read-only" },
+    { path = "gix::Repository::tag_reference", reason = "creates a tag ref; TurboDiff is read-only" },
+    { path = "gix::Repository::delete_local_branches", reason = "deletes refs; TurboDiff is read-only" },
+    { path = "gix::Repository::delete_local_branches_if_unchanged", reason = "deletes refs; TurboDiff is read-only" },
+    { path = "gix::Reference::set_target_id", reason = "edits a ref; TurboDiff is read-only" },
+    { path = "gix::Reference::delete", reason = "deletes a ref; TurboDiff is read-only" },
+    { path = "gix::refs::file::Store::transaction", reason = "starts a ref transaction; TurboDiff is read-only" },
+    { path = "gix::refs::file::Transaction::prepare", reason = "locks refs for editing; TurboDiff is read-only" },
+    { path = "gix::refs::file::Transaction::commit", reason = "writes refs; TurboDiff is read-only" },
+    { path = "gix::refs::packed::Transaction::prepare", reason = "prepares a packed-refs edit; TurboDiff is read-only" },
+    { path = "gix::refs::packed::Transaction::commit", reason = "writes packed-refs; TurboDiff is read-only" },
+
+    # Object writes
+    { path = "gix::Repository::write_object", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::Repository::write_blob", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::Repository::write_blob_stream", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::Repository::commit", reason = "writes a commit and moves a ref; TurboDiff is read-only" },
+    { path = "gix::Repository::commit_as", reason = "writes a commit and moves a ref; TurboDiff is read-only" },
+    { path = "gix::Repository::tag", reason = "writes a tag object and ref; TurboDiff is read-only" },
+    { path = "gix::object::tree::Editor::write", reason = "writes tree objects; TurboDiff is read-only" },
+    { path = "gix::object::tree::editor::Cursor::write", reason = "writes tree objects; TurboDiff is read-only" },
+    { path = "gix::objs::Write::write", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::objs::Write::write_buf", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::objs::Write::write_buf_with_known_id", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::objs::Write::write_stream", reason = "writes an object; TurboDiff is read-only" },
+    { path = "gix::objs::Write::write_stream_with_known_id", reason = "writes an object; TurboDiff is read-only" },
+
+    # Config writes
+    { path = "gix::Repository::config_file_mut", reason = "opens a config file for writing; TurboDiff is read-only" },
+    { path = "gix::config::FileTransaction::commit", reason = "writes a config file; TurboDiff is read-only" },
+    { path = "gix::config::File::write_to", reason = "serialises config for writing; TurboDiff is read-only" },
+    { path = "gix::config::File::write_to_filter", reason = "serialises config for writing; TurboDiff is read-only" },
+
+    # Lock acquisition
+    { path = "gix::lock::File::acquire", reason = "takes a lock file in the repository; TurboDiff is read-only" },
+    { path = "gix::lock::File::acquire_to_update_resource", reason = "takes a lock file in the repository; TurboDiff is read-only" },
+    { path = "gix::lock::Marker::acquire_to_hold_resource", reason = "takes a lock file in the repository; TurboDiff is read-only" },
+    { path = "gix::lock::File::commit", reason = "replaces a locked file; TurboDiff is read-only" },
+    { path = "gix::lock::Marker::commit", reason = "replaces a locked file; TurboDiff is read-only" },
+]
