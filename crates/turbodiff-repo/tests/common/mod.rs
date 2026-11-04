@@ -8,7 +8,15 @@ use std::process::Command;
 
 use tempfile::TempDir;
 
-const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures");
+/// `tests/fixtures/` at the repository root. Found by walking up, because
+/// `src-tauri`'s tests use this module too.
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .map(|dir| dir.join("tests/fixtures"))
+        .find(|dir| dir.join("lib.sh").is_file())
+        .expect("tests/fixtures not found")
+}
 
 /// A fixture repository in a temporary directory, removed when dropped.
 pub struct Fixture {
@@ -21,7 +29,7 @@ impl Fixture {
     pub fn build(name: &str) -> Self {
         let dir = tempfile::tempdir().expect("failed to create a temporary directory");
         let path = dir.path().join(name);
-        let script = Path::new(FIXTURES).join(format!("{name}.sh"));
+        let script = fixtures().join(format!("{name}.sh"));
         let output = Command::new("bash")
             .arg(&script)
             .arg(&path)
