@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "tauri": "tauri",
+    "test": "vitest run",
     "lint": "eslint . && prettier --check . && svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "format": "prettier --write ."
   },
