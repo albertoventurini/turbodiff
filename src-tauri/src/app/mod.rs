@@ -1,6 +1,7 @@
 //! App services: windows, the command line, settings, recent repositories and
 //! menus (TECH.md §4.7).
 
+mod boot;
 pub mod cli;
 pub mod menu;
 pub mod placement;

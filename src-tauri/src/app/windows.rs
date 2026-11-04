@@ -237,6 +237,7 @@ pub fn open_settings(app: &AppHandle) {
     }
     let url = WebviewUrl::App("index.html?window=settings".into());
     let result = WebviewWindowBuilder::new(app, SETTINGS_LABEL, url)
+        .initialization_script(boot_script(app))
         .title("Settings")
         .inner_size(640.0, 560.0)
         .min_inner_size(480.0, 400.0)
@@ -257,6 +258,7 @@ fn new_label(app: &AppHandle) -> String {
 /// position are restored by `tauri-plugin-window-state`.
 fn create(app: &AppHandle, label: &str, title: Option<&str>) {
     let result = WebviewWindowBuilder::new(app, label, WebviewUrl::App("index.html".into()))
+        .initialization_script(boot_script(app))
         .title(title.unwrap_or("TurboDiff"))
         .inner_size(1200.0, 800.0)
         .min_inner_size(640.0, 400.0)
@@ -265,6 +267,11 @@ fn create(app: &AppHandle, label: &str, title: Option<&str>) {
         eprintln!("turbodiff: can't open a window: {err}");
         app.state::<AppState>().windows().remove(label);
     }
+}
+
+/// Sets the theme before the page's first paint.
+fn boot_script(app: &AppHandle) -> String {
+    super::boot::script(&app.state::<AppState>().settings())
 }
 
 fn title(root: &Path) -> String {
