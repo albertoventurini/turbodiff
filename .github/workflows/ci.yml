@@ -50,6 +50,9 @@ jobs:
       # clippy only warns, even with -D warnings, when a clippy.toml path no
       # longer resolves (for example after a gix upgrade), so check for that too.
       - name: cargo clippy
+        # Without an explicit shell, GitHub doesn't set pipefail, so the step
+        # would take tee's exit status instead of clippy's.
+        shell: bash
         run: |
           cargo clippy --locked --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log
           if grep -q "does not refer to a reachable function" clippy.log; then
