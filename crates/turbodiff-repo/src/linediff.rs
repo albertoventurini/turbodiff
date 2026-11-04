@@ -47,6 +47,12 @@ fn line_key(line: &[u8], ignore_whitespace: bool) -> Cow<'_, [u8]> {
     }
 }
 
+/// Above this many lines, both sides together, Histogram gives way to Myers.
+/// imara-diff's Histogram is quadratic at worst: a lock file with every other
+/// line changed (100,000 lines) took 9 s, against 2 ms for Myers. At this
+/// size the worst case stays under half a second (TECH.md §4.5).
+pub(crate) const HISTOGRAM_MAX_LINES: usize = 20_000;
+
 /// The ranges of lines that changed between `old` and `new`, in order.
 pub(crate) fn diff_lines(
     old: &[&[u8]],
@@ -54,6 +60,11 @@ pub(crate) fn diff_lines(
     algorithm: Algorithm,
     ignore_whitespace: bool,
 ) -> Vec<ChangedRange> {
+    let algorithm = if old.len() + new.len() > HISTOGRAM_MAX_LINES {
+        Algorithm::Myers
+    } else {
+        algorithm
+    };
     let mut input = InternedInput::default();
     input.update_before(old.iter().map(|line| line_key(line, ignore_whitespace)));
     input.update_after(new.iter().map(|line| line_key(line, ignore_whitespace)));
@@ -117,6 +128,21 @@ mod tests {
         assert_eq!(counts(old, new, false), (1, 1));
         assert_eq!(counts(old, new, true), (0, 0));
         assert_eq!(counts("a b\n", "ab\nc\n", true), (1, 0));
+    }
+
+    #[test]
+    fn large_files_dont_hit_histograms_worst_case() {
+        // Every other line changed, and every line unique: about 3 s with
+        // Histogram, a few milliseconds with Myers.
+        let version = |minor: u32| {
+            (0..30_000)
+                .map(|i| format!("package-{i}@1.{minor}.0:\n  resolved {i}\n"))
+                .collect::<String>()
+        };
+        let (old, new) = (version(0), version(1));
+        let start = std::time::Instant::now();
+        assert_eq!(counts(&old, &new, false), (30_000, 30_000));
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
     }
 
     #[test]
