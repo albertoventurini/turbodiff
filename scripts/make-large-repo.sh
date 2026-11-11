@@ -1,6 +1,6 @@
 #!/bin/sh
-# Builds a repository with a very large change set, for the performance check
-# in RELEASING.md (TECH.md §9): thousands of changed files and tens of
+# Builds a repository with a very large change set, for checking performance
+# by hand (TECH.md §9): thousands of changed files and tens of
 # thousands of changed lines, plus a few files over the large-diff thresholds.
 #
 # Usage: scripts/make-large-repo.sh <dir> [files]

@@ -126,7 +126,7 @@ Everything here lives in the `turbodiff-repo` crate (`crates/turbodiff-repo/`) a
 ## M9 — Release
 
 - [x] Accessibility pass: status shown by letters and markers as well as colour, AA contrast in both modes, respect for OS font scaling and reduced motion (PRD §7).
-- [x] Performance pass on a large repository, on Linux (WebKitGTK) first, then macOS (TECH §9). Linux done in M9; macOS is a manual step in `RELEASING.md`.
+- [x] Performance pass on a large repository, on Linux (WebKitGTK) first, then macOS (TECH §9). Linux done in M9; macOS isn't checked.
 - [x] App icon and branding.
 - [x] `release.yml`: `tauri-action` builds the AppImage, .deb and an unsigned universal .dmg, and uploads them to a draft release (TECH §11).
 - [x] A script that updates the version in `package.json`, `Cargo.toml` and `tauri.conf.json` together.

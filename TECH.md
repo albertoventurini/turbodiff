@@ -378,7 +378,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 
 - The window appears in 0.3 s. The file list first took 10–20 s, almost all of it counting the lock file with Histogram; with Myers above 20,000 lines (§4.5) the backend lists it in 0.5 s and the diff shows 2–4 s after launch. The rest is mostly the sidebar's file tree, which isn't virtualised (§7.2); fine at this size, and the first thing to look at if a bigger change set is slow. For comparison, `git diff HEAD -M --shortstat` takes 0.3 s.
 - Find in page over every file (a word that matches 500,000 times) first applied each loaded diff on its own, and each rebuilt the row list (300 ms with everything loaded). Applying them in batches (§7.5) brings it to under 15 s for all 3,271 files, with the window drawing in between.
-- Not checked here: scrolling smoothness, which needs a person at the window, and macOS. Both are in `RELEASING.md`.
+- Not checked: scrolling smoothness, which needs a person at the window, and macOS.
 
 ---
 
@@ -412,7 +412,7 @@ These are qualitative goals (PRD §8), met by design rather than by benchmark ga
 
 ### 10.3 Not automated in v1
 
-End-to-end tests of the whole app, the read-only before-and-after check, and performance benchmarks. These are covered by a short **manual pre-release checklist** in `RELEASING.md`, which will be written in milestone M9 of [TASKS.md](TASKS.md).
+End-to-end tests of the whole app, a read-only before-and-after check of a real repository, and performance benchmarks. They aren't checked by hand before a release either: a manual pre-release checklist was dropped after v0.1.0. The read-only guarantee rests on `clippy.toml`'s `disallowed-methods` and the `turbodiff-repo` tests, and performance on the M9 pass (§9); `scripts/make-large-repo.sh` is still there for checking it by hand when needed.
 
 ---
 
