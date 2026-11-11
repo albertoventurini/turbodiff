@@ -407,4 +407,70 @@ describe('DiffList', () => {
       expect(await screen.findByRole('textbox', { name: 'Find in diff' })).toHaveValue('fifty');
     });
   });
+
+  describe('Copy for Claude', () => {
+    const writeText = vi.fn();
+    beforeEach(() => {
+      writeText.mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    });
+
+    function select(from: Node, fromOffset: number, to: Node, toOffset: number) {
+      document.getSelection()!.setBaseAndExtent(from, fromOffset, to, toOffset);
+      document.dispatchEvent(new Event('selectionchange'));
+    }
+
+    /** The row whose (first) line is `text`. */
+    async function rowWith(text: string): Promise<Element> {
+      return vi.waitFor(() => {
+        const row = [...document.querySelectorAll('.row')].find(
+          (row) => row.querySelector('.content')?.textContent === text,
+        );
+        expect(row).toBeDefined();
+        return row!;
+      });
+    }
+
+    it('copies the selected parts of lines with their place and the comparison', async () => {
+      setup([entry('src/a.txt')]);
+      const deleted = await rowWith('old fifty');
+      const added = screen.getByText('new', { selector: '.word' }).closest('.row')!;
+      // From "fifty" on the deleted line to "new" on the added one.
+      const rest = [...deleted.querySelector('.content')!.childNodes].find(
+        (node) => node.textContent === ' fifty',
+      )!;
+      select(rest, 1, added.querySelector('.word')!.firstChild!, 3);
+      await fireEvent.click(await screen.findByRole('button', { name: 'Copy for Claude' }));
+      expect(writeText).toHaveBeenCalledWith(
+        'src/a.txt:50 (old version: src/a.txt:50), HEAD → working tree:\n' +
+          '```diff\n-fifty\n+new\n```',
+      );
+      expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    });
+
+    it('keeps to the side the selection started on in split view', async () => {
+      const stores = setup([entry('a.txt')]);
+      stores.view.diffStyle = 'split';
+      const first = (await rowWith('line 49')).querySelector('[data-side="right"] .content')!;
+      const last = (await rowWith('line 51')).querySelector('[data-side="right"] .content')!;
+      select(first, 0, last, last.childNodes.length);
+      await fireEvent.click(await screen.findByRole('button', { name: 'Copy for Claude' }));
+      expect(writeText).toHaveBeenCalledWith(
+        'a.txt:49-51, HEAD → working tree:\n```diff\n line 49\n+new fifty\n line 51\n```',
+      );
+    });
+
+    it('shows the button only for a selection of code', async () => {
+      setup([entry('a.txt')]);
+      const row = await rowWith('line 49');
+      const content = row.querySelector('.content')!;
+      select(content, 0, content, content.childNodes.length);
+      expect(await screen.findByRole('button', { name: 'Copy for Claude' })).toBeInTheDocument();
+      document.getSelection()!.removeAllRanges();
+      document.dispatchEvent(new Event('selectionchange'));
+      await vi.waitFor(() =>
+        expect(screen.queryByRole('button', { name: 'Copy for Claude' })).toBeNull(),
+      );
+    });
+  });
 });
