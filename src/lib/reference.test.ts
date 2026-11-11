@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { claudeReference, comparisonLabel, type SelectedLine } from './claudeRef';
+import { codeReference, comparisonLabel, type SelectedLine } from './reference';
 import type { Comparison, FileEntry } from './types';
 
 function entry(path: string, overrides: Partial<FileEntry> = {}): FileEntry {
@@ -62,9 +62,9 @@ describe('comparisonLabel', () => {
   });
 });
 
-describe('claudeReference', () => {
+describe('codeReference', () => {
   it('copies unchanged lines as plain code in the file’s language', () => {
-    const text = claudeReference(
+    const text = codeReference(
       [{ file: entry('src/main.rs'), lines: [ctx(42, 'fn main() {'), ctx(43, '}')] }],
       workTree,
     );
@@ -72,7 +72,7 @@ describe('claudeReference', () => {
   });
 
   it('copies changed lines as a diff, with the old lines of deleted ones', () => {
-    const text = claudeReference(
+    const text = codeReference(
       [{ file: entry('a.ts'), lines: [ctx(10, 'a'), del(9, 'old'), add(11, 'new')] }],
       workTree,
     );
@@ -83,22 +83,22 @@ describe('claudeReference', () => {
 
   it('names the old path for deleted lines of a renamed file', () => {
     const file = entry('new.txt', { oldPath: 'old.txt', status: 'R' });
-    expect(claudeReference([{ file, lines: [del(3, 'x'), del(4, 'y')] }], workTree)).toBe(
+    expect(codeReference([{ file, lines: [del(3, 'x'), del(4, 'y')] }], workTree)).toBe(
       'old.txt:3-4 (old version), HEAD → working tree:\n```diff\n-x\n-y\n```',
     );
   });
 
   it('copies a part of a line as it is, naming the line', () => {
-    expect(claudeReference([{ file: entry('notes'), lines: [add(7, 'part')] }], workTree)).toBe(
+    expect(codeReference([{ file: entry('notes'), lines: [add(7, 'part')] }], workTree)).toBe(
       'notes:7, HEAD → working tree:\n```diff\n+part\n```',
     );
-    expect(claudeReference([{ file: entry('notes'), lines: [ctx(7, 'part')] }], workTree)).toBe(
+    expect(codeReference([{ file: entry('notes'), lines: [ctx(7, 'part')] }], workTree)).toBe(
       'notes:7, HEAD → working tree:\n```\npart\n```',
     );
   });
 
   it('uses a longer fence for code with backticks, and a block per file', () => {
-    const text = claudeReference(
+    const text = codeReference(
       [
         { file: entry('a.md'), lines: [ctx(1, '```js')] },
         { file: entry('b.txt'), lines: [] },

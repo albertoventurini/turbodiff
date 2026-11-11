@@ -15,7 +15,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
-  import { claudeReference, type SelectedFile, type SelectedLine } from '../claudeRef';
+  import { codeReference, type SelectedFile, type SelectedLine } from '../reference';
   import { buildRows, type ExpandDirection, type Row } from '../diffRows';
   import { orderedFiles } from '../fileTree';
   import { findMatches, marksByCell, sameMatch, type FindMatch } from '../find';
@@ -440,7 +440,7 @@
     copyAt = null;
   }
 
-  // Copy for Claude (PRD §6.6): a button next to a selection of code, which
+  // Copy as reference (PRD §6.6): a button next to a selection of code, which
   // copies it with its file, line numbers and comparison.
   let list = $state<HTMLElement>();
   let pointerDown = false;
@@ -564,10 +564,10 @@
     };
   });
 
-  async function copyForClaude() {
+  async function copyReference() {
     const files = selectedFiles();
     if (files.length === 0) return;
-    const text = claudeReference(files, session.comparison, session.changes?.noMergeBase);
+    const text = codeReference(files, session.comparison, session.changes?.noMergeBase);
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -661,11 +661,16 @@
     </div>
   {/if}
   {#if copyAt}
-    <div class="copy-for-claude" style="top: {copyAt.top}px; left: {copyAt.right}px">
+    <div class="copy-reference" style="top: {copyAt.top}px; left: {copyAt.right}px">
       <!-- Pressing the button keeps the selection. -->
-      <Button size="small" onmousedown={(e) => e.preventDefault()} onclick={copyForClaude}>
+      <Button
+        size="small"
+        title="Copy the code with its file, lines and comparison, to paste into a coding agent"
+        onmousedown={(e) => e.preventDefault()}
+        onclick={copyReference}
+      >
         <Icon name={copied ? 'check' : 'copy'} />
-        {copied ? 'Copied' : 'Copy for Claude'}
+        {copied ? 'Copied' : 'Copy as reference'}
       </Button>
     </div>
   {/if}
@@ -701,13 +706,13 @@
   }
 
   /* Its right edge is at `left`. */
-  .copy-for-claude {
+  .copy-reference {
     position: absolute;
     z-index: 2;
     transform: translateX(-100%);
   }
 
-  .copy-for-claude :global(.button) {
+  .copy-reference :global(.button) {
     box-shadow: var(--shadow-floating-small);
   }
 

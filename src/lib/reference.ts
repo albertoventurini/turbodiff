@@ -1,4 +1,4 @@
-// "Copy for Claude" (PRD §6.6): a selection in the diff, as text to paste into
+// "Copy as reference" (PRD §6.6): a selection in the diff, as text to paste into
 // a coding agent: where the code is, in which comparison, and the code itself.
 import { languageFor } from './highlight/languages';
 import { refLabel } from './refs';
@@ -58,8 +58,8 @@ function block(selected: SelectedFile, comparison: string): string {
   return `${location(selected)}, ${comparison}:\n${fence}${language}\n${body}\n${fence}`;
 }
 
-/** The text that "Copy for Claude" puts on the clipboard, one block per file. */
-export function claudeReference(
+/** The text that "Copy as reference" puts on the clipboard, one block per file. */
+export function codeReference(
   files: SelectedFile[],
   comparison: Comparison,
   noMergeBase = false,
