@@ -52,4 +52,5 @@ Native Wayland windows can't be captured from the command line on GNOME. Running
 
 - This only captures images. It can't click, type, scroll or copy, so interactions such as switching views, expanding context or copying text still need checking by hand. Say so in the report.
 - A change to `src-tauri/capabilities/`, `build.rs` or `tauri.conf.json` needs a rebuild. `tauri dev` rebuilds and restarts the app when those files change.
+- TurboDiff is single-instance. If an installed TurboDiff is already running, the dev build passes its arguments to that app and exits at once (the log ends at `Running …/debug/turbodiff`), so no dev window appears. Ask the user to quit their TurboDiff first; don't kill it yourself.
 - macOS isn't covered here. CI builds and tests on macOS, but nothing checks its UI automatically.

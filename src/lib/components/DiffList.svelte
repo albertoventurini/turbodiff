@@ -15,6 +15,7 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
+  import { codeReference, type SelectedFile, type SelectedLine } from '../reference';
   import { buildRows, type ExpandDirection, type Row } from '../diffRows';
   import { orderedFiles } from '../fileTree';
   import { findMatches, marksByCell, sameMatch, type FindMatch } from '../find';
@@ -22,9 +23,11 @@
   import { DiffStore } from '../stores/diffs.svelte';
   import { HighlightStore } from '../stores/highlights.svelte';
   import { resolveMode, THEMES } from '../theme/theme.svelte';
+  import Button from './Button.svelte';
   import DiffRow from './DiffRow.svelte';
   import FileHeader from './FileHeader.svelte';
   import FindBar from './FindBar.svelte';
+  import Icon from './Icon.svelte';
 
   const { session, view, settings, system } = getStores();
   const diffs = new DiffStore(session);
@@ -236,6 +239,7 @@
     if (!scroller) return;
     scrollTop = scroller.scrollTop;
     anchor = takeAnchor();
+    placeCopyButton();
   }
 
   // Keep the anchor in place when rows change height, load or go away.
@@ -432,6 +436,146 @@
   function onpointerdown(e: PointerEvent) {
     const side = (e.target as Element).closest<HTMLElement>('[data-side]')?.dataset.side;
     selectSide = side === 'left' || side === 'right' ? side : null;
+    pointerDown = true;
+    copyAt = null;
+  }
+
+  // Copy as reference (PRD §6.6): a button next to a selection of code, which
+  // copies it with its file, line numbers and comparison.
+  let list = $state<HTMLElement>();
+  let pointerDown = false;
+  /** Where the button goes, within the list; `null` hides it. */
+  let copyAt = $state<{ top: number; right: number } | null>(null);
+  let copied = $state(false);
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** The diff's selection, if it's in the rows. */
+  function selectionRange(): Range | null {
+    const selection = document.getSelection();
+    if (!scroller || !selection || selection.isCollapsed || selection.rangeCount === 0) return null;
+    const range = selection.getRangeAt(0);
+    return scroller.contains(range.commonAncestorContainer) ? range : null;
+  }
+
+  /** The length of the text in `content` up to a boundary point inside it. */
+  function offsetIn(content: Node, node: Node, offset: number): number {
+    const before = document.createRange();
+    before.selectNodeContents(content);
+    before.setEnd(node, offset);
+    return before.toString().length;
+  }
+
+  /** The line shown by one cell of a row; in split view, only on `side`. */
+  function lineOf(row: Row, cellSide: string | undefined, side: string | null) {
+    if (row.kind === 'line') return row.line;
+    if (row.kind !== 'split' || (side !== null && cellSide !== side)) return null;
+    const left = cellSide === 'left';
+    const cell = left ? row.left : row.right;
+    if (!cell) return null;
+    return { ...cell, oldNo: left ? cell.no : null, newNo: left ? null : cell.no };
+  }
+
+  type SelectedPart = { row: Row; cell: HTMLElement; line: SelectedLine };
+
+  /** The selected part of every rendered line the selection touches, in order. */
+  function selectedParts(): SelectedPart[] {
+    const range = selectionRange();
+    if (!range || !scroller) return [];
+    const startSide =
+      range.startContainer.parentElement?.closest<HTMLElement>('[data-side]')?.dataset.side;
+    const side = selectSide ?? startSide ?? null;
+    const parts: SelectedPart[] = [];
+    for (const element of scroller.querySelectorAll<HTMLElement>('.rows > .row')) {
+      const row = rows[indexByKey.get(element.dataset.key!) ?? -1];
+      if (!row) continue;
+      for (const content of element.querySelectorAll<HTMLElement>('.content')) {
+        if (!range.intersectsNode(content)) continue;
+        const cell = content.closest<HTMLElement>('.cell')!;
+        const line = lineOf(row, cell.dataset.side, side);
+        if (!line) continue;
+        const { startContainer, startOffset, endContainer, endOffset } = range;
+        const start = content.contains(startContainer)
+          ? offsetIn(content, startContainer, startOffset)
+          : 0;
+        const end = content.contains(endContainer)
+          ? offsetIn(content, endContainer, endOffset)
+          : line.text.length;
+        // A selection that ends at the very start of a line doesn't take it.
+        if (start >= end && line.text !== '') continue;
+        const { kind, oldNo, newNo } = line;
+        parts.push({ row, cell, line: { kind, oldNo, newNo, text: line.text.slice(start, end) } });
+      }
+    }
+    return parts;
+  }
+
+  /** The selected lines, by file. Rows are in order, so each file's lines come together. */
+  function selectedFiles(): SelectedFile[] {
+    const byFile: SelectedFile[] = [];
+    for (const { row, line } of selectedParts()) {
+      const last = byFile.at(-1);
+      if (last?.file === row.file) last.lines.push(line);
+      else byFile.push({ file: row.file, lines: [line] });
+    }
+    return byFile;
+  }
+
+  /**
+   * Puts the button at the right end of the selection's last line, just below
+   * it, or above the first line when there's no room below.
+   */
+  function placeCopyButton() {
+    const parts = pointerDown ? [] : selectedParts();
+    if (parts.length === 0 || !list || !scroller) {
+      copyAt = null;
+      return;
+    }
+    const box = list.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const first = parts[0].cell.getBoundingClientRect();
+    const last = parts[parts.length - 1].cell.getBoundingClientRect();
+    if (last.bottom < view.top || first.top > view.bottom) {
+      copyAt = null;
+      return;
+    }
+    const height = 32;
+    const gap = 4;
+    const below = last.bottom + gap + height <= view.bottom;
+    const top = below ? last.bottom + gap : Math.max(view.top, first.top - height - gap);
+    const right = (below ? last : first).right - box.left - 8;
+    copyAt = { top: top - box.top, right };
+  }
+
+  $effect(() => {
+    const onselectionchange = () => {
+      copied = false;
+      placeCopyButton();
+    };
+    const onpointerup = () => {
+      pointerDown = false;
+      placeCopyButton();
+    };
+    document.addEventListener('selectionchange', onselectionchange);
+    window.addEventListener('pointerup', onpointerup);
+    return () => {
+      document.removeEventListener('selectionchange', onselectionchange);
+      window.removeEventListener('pointerup', onpointerup);
+      clearTimeout(copiedTimer);
+    };
+  });
+
+  async function copyReference() {
+    const files = selectedFiles();
+    if (files.length === 0) return;
+    const text = codeReference(files, session.comparison, session.changes?.noMergeBase);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    copied = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied = false), 1500);
   }
 
   const vars = $derived.by(() => {
@@ -452,7 +596,7 @@
   });
 </script>
 
-<div class="diff-list" data-select={selectSide} style={vars}>
+<div class="diff-list" data-select={selectSide} style={vars} bind:this={list}>
   <!-- Focusable, so the diff scrolls from the keyboard. -->
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <div
@@ -516,6 +660,20 @@
       />
     </div>
   {/if}
+  {#if copyAt}
+    <div class="copy-reference" style="top: {copyAt.top}px; left: {copyAt.right}px">
+      <!-- Pressing the button keeps the selection. -->
+      <Button
+        size="small"
+        title="Copy the code with its file, lines and comparison, to paste into a coding agent"
+        onmousedown={(e) => e.preventDefault()}
+        onclick={copyReference}
+      >
+        <Icon name={copied ? 'check' : 'copy'} />
+        {copied ? 'Copied' : 'Copy as reference'}
+      </Button>
+    </div>
+  {/if}
   {#if maxScrollX > 0}
     <div class="hscroll" bind:this={hscroll} onscroll={onhscroll}>
       <div style="width: calc(100% + {maxScrollX}px)"></div>
@@ -545,6 +703,17 @@
     top: var(--base-size-8);
     right: var(--base-size-24);
     z-index: 2;
+  }
+
+  /* Its right edge is at `left`. */
+  .copy-reference {
+    position: absolute;
+    z-index: 2;
+    transform: translateX(-100%);
+  }
+
+  .copy-reference :global(.button) {
+    box-shadow: var(--shadow-floating-small);
   }
 
   .probe {
