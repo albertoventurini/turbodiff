@@ -1,4 +1,4 @@
-// "Copy as reference" (PRD §6.6): a selection in the diff, as text to paste into
+// "Copy reference" (PRD §6.6): a selection in the diff, as text to paste into
 // a coding agent: where the code is, in which comparison, and the code itself.
 import { languageFor } from './highlight/languages';
 import { refLabel } from './refs';
@@ -58,15 +58,18 @@ function block(selected: SelectedFile, comparison: string): string {
   return `${location(selected)}, ${comparison}:\n${fence}${language}\n${body}\n${fence}`;
 }
 
-/** The text that "Copy as reference" puts on the clipboard, one block per file. */
+/**
+ * The text that "Copy reference" puts on the clipboard, one block per file. It
+ * ends with a newline, so what's typed after pasting it starts on a new line.
+ */
 export function codeReference(
   files: SelectedFile[],
   comparison: Comparison,
   noMergeBase = false,
 ): string {
   const label = comparisonLabel(comparison, noMergeBase);
-  return files
+  const blocks = files
     .filter((selected) => selected.lines.length > 0)
-    .map((selected) => block(selected, label))
-    .join('\n\n');
+    .map((selected) => block(selected, label));
+  return blocks.length > 0 ? `${blocks.join('\n\n')}\n` : '';
 }

@@ -206,7 +206,7 @@ The comparison chosen is **not** saved between launches. Each time a repository 
 - **"No newline at end of file"** markers are shown.
 - Long lines **soft-wrap** or scroll horizontally, depending on the setting.
 - Text in the diff can be selected and copied. Copying does not include line numbers or `+`/`−` markers.
-- **Copy as reference:** while code in the diff is selected, a small "Copy as reference" button appears next to the selection. It copies the selection as a reference to paste into a coding agent such as Claude Code: the file path with the line numbers (`src/x.rs:42-51`, and the old version's lines when deleted lines are selected), the comparison (`HEAD → working tree`, `main...feature`), and the selected code in a fenced block. A selection with added or deleted lines is copied as a `diff` block with `+`/`-` markers; one with only unchanged lines as plain code. Its tooltip says what it's for. It adds no question or prompt of its own, and has no keyboard shortcut.
+- **Copy reference:** while code in the diff is selected, a small "Copy reference" button appears next to the selection. It copies the selection as a reference to paste into a coding agent such as Claude Code: the file path with the line numbers (`src/x.rs:42-51`, and the old version's lines when deleted lines are selected), the comparison (`HEAD → working tree`, `main...feature`), and the selected code in a fenced block. A selection with added or deleted lines is copied as a `diff` block with `+`/`-` markers; one with only unchanged lines as plain code. Its tooltip says what it's for. It adds no question or prompt of its own, and has no keyboard shortcut.
 
 #### Special files
 

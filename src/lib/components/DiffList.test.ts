@@ -408,7 +408,7 @@ describe('DiffList', () => {
     });
   });
 
-  describe('Copy as reference', () => {
+  describe('Copy reference', () => {
     const writeText = vi.fn();
     beforeEach(() => {
       writeText.mockResolvedValue(undefined);
@@ -440,10 +440,10 @@ describe('DiffList', () => {
         (node) => node.textContent === ' fifty',
       )!;
       select(rest, 1, added.querySelector('.word')!.firstChild!, 3);
-      await fireEvent.click(await screen.findByRole('button', { name: 'Copy as reference' }));
+      await fireEvent.click(await screen.findByRole('button', { name: 'Copy reference' }));
       expect(writeText).toHaveBeenCalledWith(
         'src/a.txt:50 (old version: src/a.txt:50), HEAD → working tree:\n' +
-          '```diff\n-fifty\n+new\n```',
+          '```diff\n-fifty\n+new\n```\n',
       );
       expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
     });
@@ -454,9 +454,9 @@ describe('DiffList', () => {
       const first = (await rowWith('line 49')).querySelector('[data-side="right"] .content')!;
       const last = (await rowWith('line 51')).querySelector('[data-side="right"] .content')!;
       select(first, 0, last, last.childNodes.length);
-      await fireEvent.click(await screen.findByRole('button', { name: 'Copy as reference' }));
+      await fireEvent.click(await screen.findByRole('button', { name: 'Copy reference' }));
       expect(writeText).toHaveBeenCalledWith(
-        'a.txt:49-51, HEAD → working tree:\n```diff\n line 49\n+new fifty\n line 51\n```',
+        'a.txt:49-51, HEAD → working tree:\n```diff\n line 49\n+new fifty\n line 51\n```\n',
       );
     });
 
@@ -465,11 +465,11 @@ describe('DiffList', () => {
       const row = await rowWith('line 49');
       const content = row.querySelector('.content')!;
       select(content, 0, content, content.childNodes.length);
-      expect(await screen.findByRole('button', { name: 'Copy as reference' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Copy reference' })).toBeInTheDocument();
       document.getSelection()!.removeAllRanges();
       document.dispatchEvent(new Event('selectionchange'));
       await vi.waitFor(() =>
-        expect(screen.queryByRole('button', { name: 'Copy as reference' })).toBeNull(),
+        expect(screen.queryByRole('button', { name: 'Copy reference' })).toBeNull(),
       );
     });
   });

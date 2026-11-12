@@ -437,15 +437,30 @@
     const side = (e.target as Element).closest<HTMLElement>('[data-side]')?.dataset.side;
     selectSide = side === 'left' || side === 'right' ? side : null;
     pointerDown = true;
+    releasedAt = null;
     copyAt = null;
   }
 
-  // Copy as reference (PRD §6.6): a button next to a selection of code, which
+  // Copy reference (PRD §6.6): a button next to a selection of code, which
   // copies it with its file, line numbers and comparison.
   let list = $state<HTMLElement>();
   let pointerDown = false;
-  /** Where the button goes, within the list; `null` hides it. */
-  let copyAt = $state<{ top: number; right: number } | null>(null);
+  /**
+   * Where the mouse button was released after selecting, in the scroller's
+   * content, so it scrolls with the code; `null` for other selections.
+   */
+  let releasedAt: { x: number; y: number } | null = null;
+  /**
+   * Where the button goes, within the list: its top, and the left edge (or the
+   * right edge, with `end`) at `x`, kept left of `limit`. `null` hides it.
+   */
+  let copyAt = $state<{ top: number; x: number; end: boolean; limit: number } | null>(null);
+  let copyWidth = $state(0);
+  const copyLeft = $derived.by(() => {
+    if (!copyAt) return 0;
+    const left = copyAt.end ? copyAt.x - copyWidth : copyAt.x;
+    return Math.max(8, Math.min(left, copyAt.limit - copyWidth));
+  });
   let copied = $state(false);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -521,8 +536,9 @@
   }
 
   /**
-   * Puts the button at the right end of the selection's last line, just below
-   * it, or above the first line when there's no room below.
+   * Puts the button just below where the mouse button was released, or above
+   * it when there's no room below. A selection made without the mouse gets it
+   * at the right end of its last line, or above its first line.
    */
   function placeCopyButton() {
     const parts = pointerDown ? [] : selectedParts();
@@ -532,18 +548,32 @@
     }
     const box = list.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
-    const first = parts[0].cell.getBoundingClientRect();
-    const last = parts[parts.length - 1].cell.getBoundingClientRect();
-    if (last.bottom < view.top || first.top > view.bottom) {
-      copyAt = null;
-      return;
-    }
     const height = 32;
     const gap = 4;
-    const below = last.bottom + gap + height <= view.bottom;
-    const top = below ? last.bottom + gap : Math.max(view.top, first.top - height - gap);
-    const right = (below ? last : first).right - box.left - 8;
-    copyAt = { top: top - box.top, right };
+    let top: number;
+    let x: number;
+    if (releasedAt) {
+      const y = view.top + releasedAt.y - scroller.scrollTop;
+      if (y < view.top || y > view.bottom) {
+        copyAt = null;
+        return;
+      }
+      // Clear of the pointer below it; the pointer's tip is at its top.
+      const below = y + 16 + height <= view.bottom;
+      top = below ? y + 16 : Math.max(view.top, y - height - gap);
+      x = releasedAt.x;
+    } else {
+      const first = parts[0].cell.getBoundingClientRect();
+      const last = parts[parts.length - 1].cell.getBoundingClientRect();
+      if (last.bottom < view.top || first.top > view.bottom) {
+        copyAt = null;
+        return;
+      }
+      const below = last.bottom + gap + height <= view.bottom;
+      top = below ? last.bottom + gap : Math.max(view.top, first.top - height - gap);
+      x = (below ? last : first).right - box.left - 8;
+    }
+    copyAt = { top: top - box.top, x, end: !releasedAt, limit: view.right - box.left - 8 };
   }
 
   $effect(() => {
@@ -551,15 +581,24 @@
       copied = false;
       placeCopyButton();
     };
-    const onpointerup = () => {
+    const onpointerup = (e: PointerEvent) => {
+      if (pointerDown && list && scroller) {
+        const box = list.getBoundingClientRect();
+        const view = scroller.getBoundingClientRect();
+        releasedAt = { x: e.clientX - box.left, y: e.clientY - view.top + scroller.scrollTop };
+      }
       pointerDown = false;
       placeCopyButton();
     };
+    // A selection changed from the keyboard is no longer where the mouse was.
+    const onkeydown = () => (releasedAt = null);
     document.addEventListener('selectionchange', onselectionchange);
     window.addEventListener('pointerup', onpointerup);
+    window.addEventListener('keydown', onkeydown);
     return () => {
       document.removeEventListener('selectionchange', onselectionchange);
       window.removeEventListener('pointerup', onpointerup);
+      window.removeEventListener('keydown', onkeydown);
       clearTimeout(copiedTimer);
     };
   });
@@ -661,7 +700,11 @@
     </div>
   {/if}
   {#if copyAt}
-    <div class="copy-reference" style="top: {copyAt.top}px; left: {copyAt.right}px">
+    <div
+      class="copy-reference"
+      style="top: {copyAt.top}px; left: {copyLeft}px"
+      bind:offsetWidth={copyWidth}
+    >
       <!-- Pressing the button keeps the selection. -->
       <Button
         size="small"
@@ -670,7 +713,7 @@
         onclick={copyReference}
       >
         <Icon name={copied ? 'check' : 'copy'} />
-        {copied ? 'Copied' : 'Copy as reference'}
+        {copied ? 'Copied' : 'Copy reference'}
       </Button>
     </div>
   {/if}
@@ -705,11 +748,9 @@
     z-index: 2;
   }
 
-  /* Its right edge is at `left`. */
   .copy-reference {
     position: absolute;
     z-index: 2;
-    transform: translateX(-100%);
   }
 
   .copy-reference :global(.button) {

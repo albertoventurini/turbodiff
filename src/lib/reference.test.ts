@@ -68,7 +68,7 @@ describe('codeReference', () => {
       [{ file: entry('src/main.rs'), lines: [ctx(42, 'fn main() {'), ctx(43, '}')] }],
       workTree,
     );
-    expect(text).toBe('src/main.rs:42-43, HEAD → working tree:\n```rust\nfn main() {\n}\n```');
+    expect(text).toBe('src/main.rs:42-43, HEAD → working tree:\n```rust\nfn main() {\n}\n```\n');
   });
 
   it('copies changed lines as a diff, with the old lines of deleted ones', () => {
@@ -77,23 +77,23 @@ describe('codeReference', () => {
       workTree,
     );
     expect(text).toBe(
-      'a.ts:10-11 (old version: a.ts:9), HEAD → working tree:\n```diff\n a\n-old\n+new\n```',
+      'a.ts:10-11 (old version: a.ts:9), HEAD → working tree:\n```diff\n a\n-old\n+new\n```\n',
     );
   });
 
   it('names the old path for deleted lines of a renamed file', () => {
     const file = entry('new.txt', { oldPath: 'old.txt', status: 'R' });
     expect(codeReference([{ file, lines: [del(3, 'x'), del(4, 'y')] }], workTree)).toBe(
-      'old.txt:3-4 (old version), HEAD → working tree:\n```diff\n-x\n-y\n```',
+      'old.txt:3-4 (old version), HEAD → working tree:\n```diff\n-x\n-y\n```\n',
     );
   });
 
   it('copies a part of a line as it is, naming the line', () => {
     expect(codeReference([{ file: entry('notes'), lines: [add(7, 'part')] }], workTree)).toBe(
-      'notes:7, HEAD → working tree:\n```diff\n+part\n```',
+      'notes:7, HEAD → working tree:\n```diff\n+part\n```\n',
     );
     expect(codeReference([{ file: entry('notes'), lines: [ctx(7, 'part')] }], workTree)).toBe(
-      'notes:7, HEAD → working tree:\n```\npart\n```',
+      'notes:7, HEAD → working tree:\n```\npart\n```\n',
     );
   });
 
@@ -108,7 +108,11 @@ describe('codeReference', () => {
     );
     expect(text).toBe(
       'a.md:1, HEAD → working tree:\n````markdown\n```js\n````\n\n' +
-        'c.txt:2, HEAD → working tree:\n```diff\n+c\n```',
+        'c.txt:2, HEAD → working tree:\n```diff\n+c\n```\n',
     );
+  });
+
+  it('copies nothing when no lines are selected', () => {
+    expect(codeReference([{ file: entry('a.txt'), lines: [] }], workTree)).toBe('');
   });
 });
