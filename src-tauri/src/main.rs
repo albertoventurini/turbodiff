@@ -13,6 +13,12 @@ fn main() {
     let cwd = std::env::current_dir().unwrap_or_default();
     let launch = app::cli::parse(std::env::args_os(), &cwd).unwrap_or_else(|err| err.exit());
 
+    // Release builds give the terminal back. `tauri dev` watches the process
+    // it started, so debug builds stay attached.
+    if !cfg!(debug_assertions) {
+        app::detach::detach();
+    }
+
     let builder = commands::specta_builder();
 
     // Debug builds regenerate the TypeScript bindings on startup.

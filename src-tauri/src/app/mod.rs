@@ -3,6 +3,7 @@
 
 mod boot;
 pub mod cli;
+pub mod detach;
 pub mod fonts;
 pub mod menu;
 pub mod placement;

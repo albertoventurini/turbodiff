@@ -58,7 +58,7 @@ A repository can be opened in four ways:
 | Method | Behaviour |
 |---|---|
 | **Open-folder dialog** | *File → Open…* shows the native directory picker. |
-| **Command line** | `turbodiff [PATH]` opens the repository at `PATH` (use `turbodiff .` for the current directory). Optional `--base <ref>` and `--compare <ref>` preselect the comparison. Without `PATH`, the welcome screen is shown. |
+| **Command line** | `turbodiff [PATH]` opens the repository at `PATH` (use `turbodiff .` for the current directory). Optional `--base <ref>` and `--compare <ref>` preselect the comparison. Without `PATH`, the welcome screen is shown. Launched from a terminal, the app detaches from it: the prompt comes back at once, and closing the terminal leaves the app open. |
 | **Recent repositories** | The welcome screen and *File → Open Recent* list recently opened repositories (most recent first, about 10 entries). Entries whose path no longer exists are shown as unavailable and can be removed. |
 | **Drag and drop** | Dropping a folder onto any TurboDiff window opens it. |
 
